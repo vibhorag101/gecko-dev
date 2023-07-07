@@ -219,6 +219,7 @@ WebAuthnManager::~WebAuthnManager() {
   }
 }
 
+//REVIEW - possible place for MakeCredential to be called for Rust
 already_AddRefed<Promise> WebAuthnManager::MakeCredential(
     const PublicKeyCredentialCreationOptions& aOptions,
     const Optional<OwningNonNull<AbortSignal>>& aSignal, ErrorResult& aError) {
@@ -467,6 +468,10 @@ already_AddRefed<Promise> WebAuthnManager::MakeCredential(
 
   MOZ_ASSERT(mTransaction.isNothing());
   mTransaction = Some(WebAuthnTransaction(promise));
+  // It is called by create() in CredentialContainer.cpp
+  // should be intercepted by RecvRequestRegister() in WebAuthnTransactionParent
+  // Which then calls Register() in WebAuthnController which calls doRegister() which then calls
+  // make_credentials() in lib.rs in authrs_bridge, which then calls register of authenticator library.
   mChild->SendRequestRegister(mTransaction.ref().mId, info);
 
   return promise.forget();

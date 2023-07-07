@@ -79,6 +79,8 @@ pub enum StatusUpdate {
             Option<AuthenticatorInfo>,
         ),
     ),
+    DeviceKeyStoreFull,
+    // FingerprintSupported(bool),
 }
 
 pub(crate) fn send_status(status: &Sender<StatusUpdate>, msg: StatusUpdate) {
