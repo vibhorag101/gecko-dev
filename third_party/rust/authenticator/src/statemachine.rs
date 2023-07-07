@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use serde_cbor::error;
+
 use crate::authenticatorservice::{RegisterArgs, SignArgs};
 use crate::consts::PARAMETER_SIZE;
 use crate::crypto::COSEAlgorithm;
@@ -195,6 +197,7 @@ impl StateMachine {
         Some(dev)
     }
 
+    //NOTE - This is used to send status to statusCallback
     fn ask_user_for_pin<U>(
         was_invalid: bool,
         retries: Option<u8>,
@@ -228,6 +231,9 @@ impl StateMachine {
     /// Try to fetch PinUvAuthToken from the device and derive from it PinUvAuthParam.
     /// Prefer UV, fallback to PIN.
     /// Prefer newer pinUvAuth-methods, if supported by the device.
+    /*NOTE - This actually verifies the pin, takes the fingerprint from user and then returns the pinUvAuthParam
+    This is not involved in showing prompt.
+    */
     fn get_pin_uv_auth_param<T: PinUvAuthCommand + Request<V>, V>(
         cmd: &mut T,
         dev: &mut Device,
@@ -246,11 +252,13 @@ impl StateMachine {
         cmd.set_uv_option(None);
 
         // CTAP1/U2F-only devices do not support user verification, so we skip it
+
+        // Here we are using CTAP -> authenticatorGetInfo command.
         let info = match dev.get_authenticator_info() {
             Some(info) => info,
             None => return Ok(PinUvAuthResult::DeviceIsCtap1),
         };
-
+        // error!("Info: {:?}", info);
         // Only use UV, if the device supports it and we don't skip it
         // which happens as a fallback, if UV-usage failed too many times
         // Note: In theory, we could also repeatedly query GetInfo here and check
@@ -348,6 +356,15 @@ impl StateMachine {
     /// the device, Err() otherwise.
     /// Handles asking the user for a PIN, if needed and sending StatusUpdates
     /// regarding PIN and UV usage.
+    //NOTE - AuthenticatorError are generated internally by the authenticator
+    //NOTE- In status update using send_status() we send a modified version of request to the statusCallback
+
+    /*NOTE Here this just sends the prompts to the user and in case of pin takes the pin
+    then in the loop its when it comes again it checks the status from get_pin_uv_auth_param()
+    and if its success then it sends the request to the device.
+    get_pin_uv_auth_param() is the one which actually takes the correct pin token or fingerprint from
+    authenticator and returns the status, which is then matched with.
+    */
     fn determine_puap_if_needed<T: PinUvAuthCommand + Request<V>, U, V>(
         cmd: &mut T,
         dev: &mut Device,
@@ -375,7 +392,9 @@ impl StateMachine {
                         return Err(());
                     }
                 }
+                //NOTE - This is the actual place for PIN on solo key failing out
                 Err(AuthenticatorError::PinError(PinError::InvalidPin(retries))) => {
+                    error!("incorrect pin");
                     if let Ok(pin) = Self::ask_user_for_pin(true, retries, status, callback) {
                         cmd.set_pin(Some(pin));
                         continue;
@@ -383,14 +402,18 @@ impl StateMachine {
                         return Err(());
                     }
                 }
+                //NOTE - This is the actual place for fingerprint failing
                 Err(AuthenticatorError::PinError(PinError::InvalidUv(retries))) => {
+                    error!("incorrect fingerprint");
                     if retries == Some(0) {
+                        //NOTE Too many incorrect fingerprint attemps, so ask for pin.
                         skip_uv = true;
                     }
                     send_status(
                         status,
                         StatusUpdate::PinUvError(StatusPinUv::InvalidUv(retries)),
-                    )
+                    );
+                    continue;
                 }
                 Err(e @ AuthenticatorError::PinError(PinError::PinAuthBlocked)) => {
                     send_status(
@@ -434,6 +457,16 @@ impl StateMachine {
         }
         Err(())
     }
+    // pub fn supports_fingerprint(dev: &mut Device,) -> bool {
+    //     let info = match dev.get_authenticator_info() {
+    //         Some(info) => info,
+    //         None => return false
+    //     };
+    //     if info.options.bio_enroll == Some(true) {
+    //         return true;
+    //     }
+    //     return false;
+    // }
 
     pub fn register(
         &mut self,
@@ -559,12 +592,16 @@ impl StateMachine {
                 );
 
                 let mut skip_uv = false;
+                //NOTE - This probably runs just once, because puap is already in loop,
+                // so it will give correct auth only or error out.
+                // But in case there is an exception in some function, it runs again
                 while alive() {
                     // Requesting both because pre-flighting (credential list filtering)
                     // can potentially send GetAssertion-commands
                     let permissions = PinUvAuthTokenPermission::MakeCredential
                         | PinUvAuthTokenPermission::GetAssertion;
 
+                    //NOTE - Get the pin, and store into the credential struct
                     let pin_uv_auth_result = match Self::determine_puap_if_needed(
                         &mut makecred,
                         &mut dev,
@@ -620,7 +657,9 @@ impl StateMachine {
                     debug!("{makecred:?} using {pin_uv_auth_result:?}");
                     debug!("------------------------------------------------------------------");
                     send_status(&status, crate::StatusUpdate::PresenceRequired);
+                    //NOTE - Send the make credential request inlcuding the pin to the authenticator
                     let resp = dev.send_msg_cancellable(&makecred, alive);
+                    //NOTE - This issues the success command, it is just used to log debug message and nothing more.
                     if resp.is_ok() {
                         send_status(
                             &status,
@@ -634,8 +673,12 @@ impl StateMachine {
                         // request.
                         let _ = selector.send(DeviceSelectorEvent::SelectedToken(dev.id()));
                     }
+                    //NOTE - The errors here are mostly not raised because,
+                    // before sending credential request to the authenticator in resp above, we have already checked
+                    // for the pin, so it being incorrect wont be a problem here.
                     match resp {
                         Ok(MakeCredentialsResult(attestation)) => {
+                            // info!("register complete after presenece");
                             callback.call(Ok(RegisterResult::CTAP2(attestation)));
                             break;
                         }
@@ -688,6 +731,11 @@ impl StateMachine {
                             callback.call(Err(AuthenticatorError::CredentialExcluded));
                             break;
                         }
+                        Err(HIDError::Command(CommandError::StatusCode(StatusCode::KeyStoreFull,_))) => {
+                            warn!("keystore full");
+                            send_status(&status, StatusUpdate::DeviceKeyStoreFull);
+                            break;
+                        }
                         Err(e) => {
                             warn!("error happened: {e}");
                             callback.call(Err(AuthenticatorError::HIDError(e)));
@@ -697,7 +745,8 @@ impl StateMachine {
                 }
             },
         );
-
+        //NOTE - The whole registration flow is actually a transaction, and after it has completed we are
+        //sending back the response.
         self.transaction = Some(try_or!(transaction, |e| cbc.call(Err(e))));
     }
 

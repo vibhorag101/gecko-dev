@@ -233,6 +233,9 @@ void WebAuthnController::Cancel(PWebAuthnTransactionParent* aTransactionParent,
   ClearTransaction(true);
 }
 
+//NOTE It takes the request from javascript, parses it and passes it to doRegister() authenticator-rs transfport
+// for actual register.
+//We send an extra notification regarding the possible misuse of attestation data such as make of key in case direct attestation is used. We keep the aInfo ( transaction info and pass it maybe). after this doRegister() is called.
 void WebAuthnController::Register(
     PWebAuthnTransactionParent* aTransactionParent,
     const uint64_t& aTransactionId, const WebAuthnMakeCredentialInfo& aInfo) {
@@ -306,6 +309,7 @@ void WebAuthnController::Register(
                          origin.get(), aInfo.BrowsingContextId());
 }
 
+//SECTION - The actual request is  handled by rust code which is called from DoRegister(), which is called from Register().
 void WebAuthnController::DoRegister(const WebAuthnMakeCredentialInfo& aInfo,
                                     bool aForceNoneAttestation) {
   mozilla::ipc::AssertIsOnBackgroundThread();
@@ -330,8 +334,11 @@ void WebAuthnController::DoRegister(const WebAuthnMakeCredentialInfo& aInfo,
                      NS_ERROR_DOM_NOT_ALLOWED_ERR, true);
     return;
   }
+  // This gets the error result from rust and returns it to the C++ code.
   nsresult rv = mTransportImpl->MakeCredential(
       mTransaction.ref().mTransactionId, aInfo.BrowsingContextId(), args);
+
+  // the below code is called when the request is completed, to check and identify the error.
   if (NS_FAILED(rv)) {
     AbortTransaction(mTransaction.ref().mTransactionId, rv, true);
     return;

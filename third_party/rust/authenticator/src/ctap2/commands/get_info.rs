@@ -379,6 +379,9 @@ impl<'de> Deserialize<'de> for AuthenticatorInfo {
                 formatter.write_str("a byte array")
             }
 
+            // here the authenticator return its info as a CBOR map
+            // so we are parsing it using the key value pairs
+            // https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#authenticatorGetInfo
             fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
             where
                 M: MapAccess<'de>,

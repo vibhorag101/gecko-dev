@@ -206,6 +206,7 @@ already_AddRefed<Promise> CredentialsContainer::Create(
     }
 
     EnsureWebAuthnManager();
+    // calls makeCredential in WebAuthnManager.cpp
     return mManager->MakeCredential(aOptions.mPublicKey.Value(),
                                     aOptions.mSignal, aRv);
   }

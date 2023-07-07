@@ -1,0 +1,1780 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 10fb8143edc1..67889c7c53ed 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -321,8 +321,6 @@ dependencies = [
+ [[package]]
+ name = "authenticator"
+ version = "0.4.0-alpha.15"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "aa0e182b77b6b19eaf9c7b69fddf3be970169ec6d34eca3f5d682ab948727e57"
+ dependencies = [
+  "base64 0.13.999",
+  "bitflags 1.3.2",
+@@ -3685,7 +3683,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1a689b62ba71fda80458a77b6ace9371d6e6a5473300901383ebd101659b3352"
+ dependencies = [
+  "bindgen 0.64.0",
+- "mozbuild",
+  "once_cell",
+  "pkcs11-bindings",
+  "serde",
+diff --git a/browser/base/content/browser.js b/browser/base/content/browser.js
+index e6066517521a..43f52ac33e58 100644
+--- a/browser/base/content/browser.js
++++ b/browser/base/content/browser.js
+@@ -3,7 +3,7 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+-var { XPCOMUtils } = ChromeUtils.importESModule(
++ var { XPCOMUtils } = ChromeUtils.importESModule(
+   "resource://gre/modules/XPCOMUtils.sys.mjs"
+ );
+ var { AppConstants } = ChromeUtils.importESModule(
+@@ -7589,7 +7589,11 @@ var WebAuthnPromptHelper = {
+ 
+     if (data.action == "presence") {
+       this.presence_required(mgr, data);
+-    } else if (data.action == "register-direct") {
++    }
++    else if (data.action == "presence-fp") {
++      this.presence_required_fp(mgr, data);
++    }
++    else if (data.action == "register-direct") {
+       this.registerDirect(mgr, data);
+     } else if (data.action == "pin-required") {
+       this.pin_required(mgr, data);
+@@ -7636,6 +7640,26 @@ var WebAuthnPromptHelper = {
+         "webauthn.pinNotSetPrompt"
+       );
+     }
++    else if(data.action =="invalid-fingerprint"){
++      this.invalidFingerPrintPrompt(mgr,data)
++    }
++    else if(data.action=="keystore-full"){
++      this.show_info(
++        mgr,
++        data.origin,
++        data.tid,
++        "storeFull",
++        "webauthn.storeFullPrompt"
++      );
++    }
++  },
++  invalidFingerPrintPrompt(mgr, { origin, tid,retriesLeft}) {
++    if(retriesLeft==1){
++      this.show_info(mgr,origin,tid,"invalidFingerprint","webauthn.incorrect-fingerprint-prompt-last")
++    }
++    else{
++      this.show_info(mgr,origin,tid,"invalidFingerprint","webauthn.incorrect-fingerprint-prompt")
++    }
+   },
+ 
+   prompt_for_password(origin, wasInvalid, retriesLeft, aPassword) {
+@@ -7707,7 +7731,8 @@ var WebAuthnPromptHelper = {
+       mgr.cancel(tid);
+     }
+   },
+-
++  //NOTE - Unlike pin_required, which also helps in taking the pin input from the user
++  // this only shows the prompt for presence like fingerprint or button press and not take any input.
+   presence_required(mgr, { origin, tid }) {
+     let mainAction = this.buildCancelAction(mgr, tid);
+     let options = { escAction: "buttoncommand" };
+@@ -7723,6 +7748,21 @@ var WebAuthnPromptHelper = {
+       options
+     );
+   },
++  presence_required_fp(mgr, { origin, tid }) {
++    let mainAction = this.buildCancelAction(mgr, tid);
++    let options = { escAction: "buttoncommand" };
++    let secondaryActions = [];
++    let message = "webauthn.userPresencePromptFP";
++    this.show(
++      tid,
++      "presence",
++      message,
++      origin,
++      mainAction,
++      secondaryActions,
++      options
++    );
++  },
+ 
+   registerDirect(mgr, { origin, tid }) {
+     let mainAction = this.buildProceedAction(mgr, tid);
+diff --git a/browser/locales/en-US/chrome/browser/browser.properties b/browser/locales/en-US/chrome/browser/browser.properties
+index 5355120fce47..0353ba655ba1 100644
+--- a/browser/locales/en-US/chrome/browser/browser.properties
++++ b/browser/locales/en-US/chrome/browser/browser.properties
+@@ -120,7 +120,8 @@ canvas.remember2=Remember this decision
+ 
+ # WebAuthn prompts
+ # LOCALIZATION NOTE (webauthn.userPresence): %S is hostname
+-webauthn.userPresencePrompt=Touch your security key to continue with %S.
++webauthn.userPresencePrompt=Please press button or enter Fingerprint (if present) to continue with %S.
++webauthn.userPresencePromptFP = Please enter fingerprint to continue with %S.
+ # LOCALIZATION NOTE (webauthn.registerDirectPrompt3):
+ # %S is hostname.
+ # The website is asking for extended information about your
+@@ -151,8 +152,10 @@ webauthn.cancel.accesskey=c
+ webauthn.proceed=Proceed
+ webauthn.proceed.accesskey=p
+ webauthn.anonymize=Anonymize anyway
++webauthn.incorrect-fingerprint-prompt = %S says fingerprint is invalid. Try with correct finger now.
++webauthn.incorrect-fingerprint-prompt-last = %S says fingerprint is invalid. You will need to enter pin, if you enter incorrect finger now.
++webauthn.storeFullPrompt = %S says your security key is full. Please remove some credentials and try again.
+ 
+-# Spoof Accept-Language prompt
+ privacy.spoof_english=Changing your language setting to English will make you more difficult to identify and enhance your privacy. Do you want to request English language versions of web pages?
+ 
+ # LOCALIZATION NOTE (identity.identified.verifier, identity.identified.state_and_country, identity.ev.contentOwner2):
+diff --git a/dom/bindings/DOMExceptionNames.h b/dom/bindings/DOMExceptionNames.h
+index 4630dd439481..8d0d985b4f53 100644
+--- a/dom/bindings/DOMExceptionNames.h
++++ b/dom/bindings/DOMExceptionNames.h
+@@ -51,3 +51,4 @@ DOMEXCEPTION(ReadOnlyError, NS_ERROR_DOM_INDEXEDDB_READ_ONLY_ERR)
+ DOMEXCEPTION(VersionError, NS_ERROR_DOM_INDEXEDDB_VERSION_ERR)
+ DOMEXCEPTION(OperationError, NS_ERROR_DOM_OPERATION_ERR)
+ DOMEXCEPTION(NotAllowedError, NS_ERROR_DOM_NOT_ALLOWED_ERR)
++// DOMEXCEPTION(UserCancelledError, NS_ERROR_DOM_USER_CANCELLED_ERR)
+diff --git a/dom/credentialmanagement/CredentialsContainer.cpp b/dom/credentialmanagement/CredentialsContainer.cpp
+index 7cce97de3aff..0add653b6e2b 100644
+--- a/dom/credentialmanagement/CredentialsContainer.cpp
++++ b/dom/credentialmanagement/CredentialsContainer.cpp
+@@ -206,6 +206,7 @@ already_AddRefed<Promise> CredentialsContainer::Create(
+     }
+ 
+     EnsureWebAuthnManager();
++    // calls makeCredential in WebAuthnManager.cpp
+     return mManager->MakeCredential(aOptions.mPublicKey.Value(),
+                                     aOptions.mSignal, aRv);
+   }
+diff --git a/dom/webauthn/WebAuthnController.cpp b/dom/webauthn/WebAuthnController.cpp
+index c089baaca3d0..94cb2d53073d 100644
+--- a/dom/webauthn/WebAuthnController.cpp
++++ b/dom/webauthn/WebAuthnController.cpp
+@@ -233,6 +233,9 @@ void WebAuthnController::Cancel(PWebAuthnTransactionParent* aTransactionParent,
+   ClearTransaction(true);
+ }
+ 
++//NOTE It takes the request from javascript, parses it and passes it to doRegister() authenticator-rs transfport
++// for actual register.
++//We send an extra notification regarding the possible misuse of attestation data such as make of key in case direct attestation is used. We keep the aInfo ( transaction info and pass it maybe). after this doRegister() is called.
+ void WebAuthnController::Register(
+     PWebAuthnTransactionParent* aTransactionParent,
+     const uint64_t& aTransactionId, const WebAuthnMakeCredentialInfo& aInfo) {
+@@ -306,6 +309,7 @@ void WebAuthnController::Register(
+                          origin.get(), aInfo.BrowsingContextId());
+ }
+ 
++//SECTION - The actual request is  handled by rust code which is called from DoRegister(), which is called from Register().
+ void WebAuthnController::DoRegister(const WebAuthnMakeCredentialInfo& aInfo,
+                                     bool aForceNoneAttestation) {
+   mozilla::ipc::AssertIsOnBackgroundThread();
+@@ -330,8 +334,11 @@ void WebAuthnController::DoRegister(const WebAuthnMakeCredentialInfo& aInfo,
+                      NS_ERROR_DOM_NOT_ALLOWED_ERR, true);
+     return;
+   }
++  // This gets the error result from rust and returns it to the C++ code.
+   nsresult rv = mTransportImpl->MakeCredential(
+       mTransaction.ref().mTransactionId, aInfo.BrowsingContextId(), args);
++
++  // the below code is called when the request is completed, to check and identify the error.
+   if (NS_FAILED(rv)) {
+     AbortTransaction(mTransaction.ref().mTransactionId, rv, true);
+     return;
+diff --git a/dom/webauthn/WebAuthnManager.cpp b/dom/webauthn/WebAuthnManager.cpp
+index 9a15f62bb447..28ee922ff6ed 100644
+--- a/dom/webauthn/WebAuthnManager.cpp
++++ b/dom/webauthn/WebAuthnManager.cpp
+@@ -219,6 +219,7 @@ WebAuthnManager::~WebAuthnManager() {
+   }
+ }
+ 
++//REVIEW - possible place for MakeCredential to be called for Rust
+ already_AddRefed<Promise> WebAuthnManager::MakeCredential(
+     const PublicKeyCredentialCreationOptions& aOptions,
+     const Optional<OwningNonNull<AbortSignal>>& aSignal, ErrorResult& aError) {
+@@ -467,6 +468,10 @@ already_AddRefed<Promise> WebAuthnManager::MakeCredential(
+ 
+   MOZ_ASSERT(mTransaction.isNothing());
+   mTransaction = Some(WebAuthnTransaction(promise));
++  // It is called by create() in CredentialContainer.cpp
++  // should be intercepted by RecvRequestRegister() in WebAuthnTransactionParent
++  // Which then calls Register() in WebAuthnController which calls doRegister() which then calls
++  // make_credentials() in lib.rs in authrs_bridge, which then calls register of authenticator library.
+   mChild->SendRequestRegister(mTransaction.ref().mId, info);
+ 
+   return promise.forget();
+diff --git a/dom/webauthn/authrs_bridge/Cargo.toml b/dom/webauthn/authrs_bridge/Cargo.toml
+index ea549d352111..3ab2792b0e28 100644
+--- a/dom/webauthn/authrs_bridge/Cargo.toml
++++ b/dom/webauthn/authrs_bridge/Cargo.toml
+@@ -5,7 +5,7 @@ edition = "2021"
+ authors = ["Martin Sirringhaus", "John Schanck"]
+ 
+ [dependencies]
+-authenticator = { version = "0.4.0-alpha.15", features = ["gecko"] }
++authenticator = {path = "../../../third_party/rust/authenticator"}
+ log = "0.4"
+ moz_task = { path = "../../../xpcom/rust/moz_task" }
+ nserror = { path = "../../../xpcom/rust/nserror" }
+diff --git a/dom/webauthn/authrs_bridge/src/lib.rs b/dom/webauthn/authrs_bridge/src/lib.rs
+index 30ee54beb93c..0772b6f211fb 100644
+--- a/dom/webauthn/authrs_bridge/src/lib.rs
++++ b/dom/webauthn/authrs_bridge/src/lib.rs
+@@ -28,7 +28,7 @@ use nserror::{
+ };
+ use nsstring::{nsACString, nsCString, nsString};
+ use serde_cbor;
+-use std::cell::RefCell;
++use std::{cell::RefCell, error};
+ use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
+ use std::sync::{Arc, Mutex};
+ use thin_vec::ThinVec;
+@@ -56,6 +56,15 @@ fn make_pin_required_prompt(
+     )
+ }
+ 
++fn make_incorrect_fingerprint_prompt(
++    tid: u64,
++    origin: &str,
++    browsing_context_id: u64,
++    retries: i64,) -> String {
++    format!(
++        r#"{{"is_ctap2":true,"action":"invalid-fingerprint","tid":{tid},"origin":"{origin}","browsingContextId":{browsing_context_id},"retriesLeft":{retries}}}"#,
++    )
++}
+ fn authrs_to_nserror(e: &AuthenticatorError) -> nsresult {
+     match e {
+         AuthenticatorError::U2FToken(U2FTokenError::NotSupported) => NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+@@ -222,6 +231,7 @@ impl Controller {
+         }
+     }
+ 
++// This is used to call FinishRegister in WebAuthnController.cpp. This completes the registration
+     fn finish_register(
+         &self,
+         tid: u64,
+@@ -282,7 +292,7 @@ impl Controller {
+ // AuthrsTransport. The u64 in PinReceiver is a transaction ID, which the AuthrsTransport uses the
+ // transaction ID as a consistency check.
+ type PinReceiver = Option<(u64, Sender<Pin>)>;
+-
++// let mut fingerprint_supported = false;
+ fn status_callback(
+     status_rx: Receiver<StatusUpdate>,
+     tid: u64,
+@@ -293,6 +303,10 @@ fn status_callback(
+ ) {
+     loop {
+         match status_rx.recv() {
++            // Ok(StatusUpdate::FingerprintSupported) => {
++            //     fingerprint_supported = true;
++            //     // debug!("STATUS: Fingerprint supported");
++            // }
+             Ok(StatusUpdate::DeviceAvailable { dev_info }) => {
+                 debug!("STATUS: device available: {}", dev_info)
+             }
+@@ -316,6 +330,16 @@ fn status_callback(
+                 let notification_str = make_prompt("presence", tid, origin, browsing_context_id);
+                 controller.send_prompt(tid, &notification_str);
+             }
++            // Ok(StatusUpdate::PresenceRequired(fingerprint_supported)) => {
++            //     if(fingerprint_supported){
++            //         let notification_str = make_prompt("presence-fp", tid, origin, browsing_context_id);
++            //         controller.send_prompt(tid, &notification_str);
++            //     }
++            //     else{
++            //         let notification_str = make_prompt("presence", tid, origin, browsing_context_id);
++            //         controller.send_prompt(tid, &notification_str);
++            //     }
++            // }
+             Ok(StatusUpdate::PinUvError(StatusPinUv::PinRequired(sender))) => {
+                 let guard = pin_receiver.lock();
+                 if let Ok(mut entry) = guard {
+@@ -357,6 +381,18 @@ fn status_callback(
+                 let notification_str = make_prompt("pin-not-set", tid, origin, browsing_context_id);
+                 controller.send_prompt(tid, &notification_str);
+             }
++            Ok(StatusUpdate::PinUvError(StatusPinUv::InvalidUv(retries))) => {
++                // info!("invalid fingerprint update");
++                let notification_str = make_incorrect_fingerprint_prompt(
++                    tid,
++                    origin,
++                    browsing_context_id,
++                    retries.map_or(-1, |x| x as i64),
++                );
++                controller.send_prompt(tid, &notification_str);
++            }
++            //NOTE - Incorrect fingerprint error actually does nothing and is not handled. It is just catched
++            // with other non handled exceptions. But have fixed it.
+             Ok(StatusUpdate::PinUvError(e)) => {
+                 warn!("Unexpected error: {:?}", e)
+             }
+@@ -366,6 +402,12 @@ fn status_callback(
+                     dev_info, auth_info
+                 );
+             }
++            Ok(StatusUpdate::DeviceKeyStoreFull) => {
++                debug!("STATUS: device keystore full");
++                let notification_str =
++                    make_prompt("keystore-full", tid, origin, browsing_context_id);
++                controller.send_prompt(tid, &notification_str);
++            }
+             Err(RecvError) => {
+                 debug!("STATUS: end");
+                 return;
+@@ -574,8 +616,12 @@ impl AuthrsTransport {
+                         controller.send_prompt(tid, &notification_str);
+                         Err(e)
+                     }
+-                    Err(e) => Err(e),
++                    Err(e) => {
++                        Err(e)
++                    },
+                 };
++                // The resutlt<RegisterResult, AuthenticatorError> is sent to finish register.
++                // It checks for any errors and then returns the result from C++ to main process.
+                 let _ = controller.finish_register(tid, result);
+             }),
+         );
+diff --git a/third_party/rust/authenticator/Cargo.lock b/third_party/rust/authenticator/Cargo.lock
+index 23f5c3159bae..eb3b03bb949e 100644
+--- a/third_party/rust/authenticator/Cargo.lock
++++ b/third_party/rust/authenticator/Cargo.lock
+@@ -4,9 +4,9 @@ version = 3
+ 
+ [[package]]
+ name = "aho-corasick"
+-version = "0.7.19"
++version = "1.0.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b4f55bd91a0978cbfd91c457a164bab8b4001c833b7f323132c0a4e1922dd44e"
++checksum = "43f6cb1bf222025340178f382c426f13757b2960e89779dfcb319c32542a5a41"
+ dependencies = [
+  "memchr",
+ ]
+@@ -32,7 +32,7 @@ version = "0.2.14"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
+ dependencies = [
+- "hermit-abi",
++ "hermit-abi 0.1.19",
+  "libc",
+  "winapi",
+ ]
+@@ -42,7 +42,7 @@ name = "authenticator"
+ version = "0.4.0-alpha.15"
+ dependencies = [
+  "assert_matches",
+- "base64",
++ "base64 0.13.1",
+  "bindgen 0.58.1",
+  "bitflags",
+  "bytes 0.5.6",
+@@ -55,7 +55,7 @@ dependencies = [
+  "libudev",
+  "log",
+  "memoffset",
+- "nom 7.1.1",
++ "nom 7.1.3",
+  "nss-gk-api",
+  "openssl",
+  "openssl-sys",
+@@ -85,6 +85,12 @@ version = "0.13.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
+ 
++[[package]]
++name = "base64"
++version = "0.21.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "604178f6c5c21f02dc555784810edfb88d34ac2c73b2eae109655649ee73ce3d"
++
+ [[package]]
+ name = "bindgen"
+ version = "0.58.1"
+@@ -110,9 +116,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "bindgen"
+-version = "0.61.0"
++version = "0.65.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8a022e58a142a46fea340d68012b9201c094e93ec3d033a944a24f8fd4a4f09a"
++checksum = "cfdf7b466f9a4903edc73f95d6d2bcd5baf8ae620638762244d3f60143643cc5"
+ dependencies = [
+  "bitflags",
+  "cexpr 0.6.0",
+@@ -120,6 +126,7 @@ dependencies = [
+  "lazy_static",
+  "lazycell",
+  "peeking_take_while",
++ "prettyplease",
+  "proc-macro2",
+  "quote",
+  "regex",
+@@ -136,23 +143,13 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+ 
+ [[package]]
+ name = "block-buffer"
+-version = "0.10.3"
++version = "0.10.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "69cce20737498f97b993470a6e536b8523f0af7892a4f928cceb1ac5e52ebe7e"
++checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+ dependencies = [
+  "generic-array",
+ ]
+ 
+-[[package]]
+-name = "buf_redux"
+-version = "0.8.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b953a6887648bb07a535631f2bc00fbdb2a2216f135552cb3f534ed136b9c07f"
+-dependencies = [
+- "memchr",
+- "safemem",
+-]
+-
+ [[package]]
+ name = "byteorder"
+ version = "1.4.3"
+@@ -170,15 +167,15 @@ dependencies = [
+ 
+ [[package]]
+ name = "bytes"
+-version = "1.2.1"
++version = "1.4.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ec8a7b6a70fde80372154c65702f00a0f56f3e1c36abbc6c440484be248856db"
++checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
+ 
+ [[package]]
+ name = "cc"
+-version = "1.0.76"
++version = "1.0.79"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "76a284da2e6fe2092f2353e51713435363112dfd60030e22add80be333fb928f"
++checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
+ 
+ [[package]]
+ name = "cexpr"
+@@ -186,7 +183,7 @@ version = "0.4.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f4aedb84272dbe89af497cf81375129abda4fc0a9e7c5d317498c15cc30c0d27"
+ dependencies = [
+- "nom 5.1.2",
++ "nom 5.1.3",
+ ]
+ 
+ [[package]]
+@@ -195,7 +192,7 @@ version = "0.6.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "6fac387a98bb7c37292057cffc56d62ecb629900026402633ae9160df93a8766"
+ dependencies = [
+- "nom 7.1.1",
++ "nom 7.1.3",
+ ]
+ 
+ [[package]]
+@@ -206,9 +203,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+ 
+ [[package]]
+ name = "clang-sys"
+-version = "1.4.0"
++version = "1.6.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "fa2e27ae6ab525c3d369ded447057bca5438d86dc3a68f6faafb8269ba82ebf3"
++checksum = "c688fc74432808e3eb684cae8830a86be1d66a2bd58e1f248ed0960a590baf6f"
+ dependencies = [
+  "glob",
+  "libc",
+@@ -242,15 +239,15 @@ dependencies = [
+ 
+ [[package]]
+ name = "core-foundation-sys"
+-version = "0.8.3"
++version = "0.8.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
++checksum = "e496a50fda8aacccc86d7529e2c1e0892dbd0f898a6b5645b5561b89c3210efa"
+ 
+ [[package]]
+ name = "cpufeatures"
+-version = "0.2.5"
++version = "0.2.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "28d997bd5e24a5928dd43e46dc529867e207907fe0b239c3477d924f7f2ca320"
++checksum = "3e4c1eaa2012c47becbbad2ab175484c2a84d1185b566fb2cc5b8707343dfe58"
+ dependencies = [
+  "libc",
+ ]
+@@ -272,19 +269,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9313f104b590510b46fc01c0a324fc76505c13871454d3c48490468d04c8d395"
+ dependencies = [
+  "libc",
+- "nom 7.1.1",
++ "nom 7.1.3",
+ ]
+ 
+ [[package]]
+ name = "digest"
+-version = "0.10.5"
++version = "0.10.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "adfbc57365a37acbd2ebf2b64d7e69bb766e2fea813521ed536f5d0520dcf86c"
++checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+ dependencies = [
+  "block-buffer",
+  "crypto-common",
+ ]
+ 
++[[package]]
++name = "encoding_rs"
++version = "0.8.32"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "071a31f4ee85403370b58aca746f01041ede6f0da2730960ad001edc2b71b394"
++dependencies = [
++ "cfg-if",
++]
++
+ [[package]]
+ name = "env_logger"
+ version = "0.6.2"
+@@ -311,15 +317,6 @@ dependencies = [
+  "termcolor",
+ ]
+ 
+-[[package]]
+-name = "fastrand"
+-version = "1.8.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a7a407cfaa3385c4ae6b23e84623d48c2798d06e3e6a1878f7f59f17b3f86499"
+-dependencies = [
+- "instant",
+-]
+-
+ [[package]]
+ name = "fnv"
+ version = "1.0.7"
+@@ -343,18 +340,18 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
+ 
+ [[package]]
+ name = "form_urlencoded"
+-version = "1.1.0"
++version = "1.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a9c384f161156f5260c24a097c56119f9be8c798586aecc13afbcbe7b7e26bf8"
++checksum = "a62bc1cf6f830c2ec14a513a9fb124d0a213a629668a4186f329db21fe045652"
+ dependencies = [
+  "percent-encoding",
+ ]
+ 
+ [[package]]
+ name = "futures-channel"
+-version = "0.3.25"
++version = "0.3.28"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "52ba265a92256105f45b719605a571ffe2d1f0fea3807304b522c1d778f79eed"
++checksum = "955518d47e09b25bbebc7a18df10b81f0c766eaf4c4f1cccef2fca5f2a4fb5f2"
+ dependencies = [
+  "futures-core",
+  "futures-sink",
+@@ -362,27 +359,27 @@ dependencies = [
+ 
+ [[package]]
+ name = "futures-core"
+-version = "0.3.25"
++version = "0.3.28"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "04909a7a7e4633ae6c4a9ab280aeb86da1236243a77b694a49eacd659a4bd3ac"
++checksum = "4bca583b7e26f571124fe5b7561d49cb2868d79116cfa0eefce955557c6fee8c"
+ 
+ [[package]]
+ name = "futures-sink"
+-version = "0.3.25"
++version = "0.3.28"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "39c15cf1a4aa79df40f1bb462fb39676d0ad9e366c2a33b590d7c66f4f81fcf9"
++checksum = "f43be4fe21a13b9781a69afa4985b0f6ee0e1afab2c6f454a8cf30e2b2237b6e"
+ 
+ [[package]]
+ name = "futures-task"
+-version = "0.3.25"
++version = "0.3.28"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2ffb393ac5d9a6eaa9d3fdf37ae2776656b706e200c8e16b1bdb227f5198e6ea"
++checksum = "76d3d132be6c0e6aa1534069c705a74a5997a356c0dc2f86a47765e5617c5b65"
+ 
+ [[package]]
+ name = "futures-util"
+-version = "0.3.25"
++version = "0.3.28"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "197676987abd2f9cadff84926f410af1c183608d36641465df73ae8211dc65d6"
++checksum = "26b01e40b772d54cf6c6d721c1d1abd0647a0106a12ecaa1c186273392a69533"
+ dependencies = [
+  "futures-core",
+  "futures-sink",
+@@ -394,9 +391,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "generic-array"
+-version = "0.14.6"
++version = "0.14.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "bff49e947297f3312447abdca79f45f4738097cc82b06e72054d2223f601f1b9"
++checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+ dependencies = [
+  "typenum",
+  "version_check",
+@@ -413,9 +410,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "getrandom"
+-version = "0.2.8"
++version = "0.2.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c05aeb6a22b8f62540c194aac980f2115af067bfe15a0734d7277a768d396b31"
++checksum = "be4136b2a15dd319360be1c07d9933517ccf0be8f16bf62a3bee4f0d618df427"
+ dependencies = [
+  "cfg-if",
+  "libc",
+@@ -424,17 +421,17 @@ dependencies = [
+ 
+ [[package]]
+ name = "glob"
+-version = "0.3.0"
++version = "0.3.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
++checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
+ 
+ [[package]]
+ name = "h2"
+-version = "0.3.15"
++version = "0.3.19"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5f9f29bc9dda355256b2916cf526ab02ce0aeaaaf2bad60d65ef3f12f11dd0f4"
++checksum = "d357c7ae988e7d2182f7d7871d0b963962420b0678b0997ce7de72001aeab782"
+ dependencies = [
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "fnv",
+  "futures-core",
+  "futures-sink",
+@@ -465,9 +462,9 @@ version = "0.3.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f3e372db8e5c0d213e0cd0b9be18be2aca3d44cf2fe30a9d46a65581cd454584"
+ dependencies = [
+- "base64",
++ "base64 0.13.1",
+  "bitflags",
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "headers-core",
+  "http",
+  "httpdate",
+@@ -493,13 +490,22 @@ dependencies = [
+  "libc",
+ ]
+ 
++[[package]]
++name = "hermit-abi"
++version = "0.2.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ee512640fe35acbfb4bb779db6f0d80704c2cacfa2e39b601ef3e3f47d1ae4c7"
++dependencies = [
++ "libc",
++]
++
+ [[package]]
+ name = "http"
+-version = "0.2.8"
++version = "0.2.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "75f43d41e26995c17e71ee126451dd3941010b0514a81a9d11f3b341debc2399"
++checksum = "bd6effc99afb63425aff9b05836f029929e345a6148a14b7ecd5ab67af944482"
+ dependencies = [
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "fnv",
+  "itoa",
+ ]
+@@ -510,7 +516,7 @@ version = "0.4.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d5f38f16d184e36f2408a55281cd658ecbd3ca05cce6d6510a176eca393e26d1"
+ dependencies = [
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "http",
+  "pin-project-lite",
+ ]
+@@ -544,11 +550,11 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
+ 
+ [[package]]
+ name = "hyper"
+-version = "0.14.20"
++version = "0.14.26"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "02c929dc5c39e335a03c405292728118860721b10190d98c2a0f0efd5baafbac"
++checksum = "ab302d72a6f11a3b910431ff93aae7e773078c769f0a3ef15fb9ec692ed147d4"
+ dependencies = [
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "futures-channel",
+  "futures-core",
+  "futures-util",
+@@ -568,9 +574,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "idna"
+-version = "0.3.0"
++version = "0.4.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e14ddfc70884202db2244c223200c204c2bda1bc6e0998d11b5e024d657209e6"
++checksum = "7d20d6b07bfbc108882d88ed8e37d39636dcc260e15e30c45e6ba089610b917c"
+ dependencies = [
+  "unicode-bidi",
+  "unicode-normalization",
+@@ -578,28 +584,19 @@ dependencies = [
+ 
+ [[package]]
+ name = "indexmap"
+-version = "1.9.1"
++version = "1.9.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "10a35a97730320ffe8e2d410b5d3b69279b98d2c14bdb8b70ea89ecf7888d41e"
++checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
+ dependencies = [
+  "autocfg",
+  "hashbrown",
+ ]
+ 
+-[[package]]
+-name = "instant"
+-version = "0.1.12"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
+-dependencies = [
+- "cfg-if",
+-]
+-
+ [[package]]
+ name = "itoa"
+-version = "1.0.4"
++version = "1.0.6"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4217ad341ebadf8d8e724e264f13e593e0648f5b3e94b3896a5df283be015ecc"
++checksum = "453ad9f582a441959e5f0d088b02ce04cfe8d51a8eaf077f12ac6d3e94164ca6"
+ 
+ [[package]]
+ name = "lazy_static"
+@@ -615,15 +612,15 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
+ 
+ [[package]]
+ name = "libc"
+-version = "0.2.136"
++version = "0.2.146"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "55edcf6c0bb319052dea84732cf99db461780fd5e8d3eb46ab6ff312ab31f197"
++checksum = "f92be4933c13fd498862a9e02a3055f8a8d9c039ce33db97306fd5a6caa7f29b"
+ 
+ [[package]]
+ name = "libloading"
+-version = "0.7.3"
++version = "0.7.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "efbc0f03f9a775e9f6aed295c6a1ba2253c5757a9e03d55c6caa46a681abcddd"
++checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
+ dependencies = [
+  "cfg-if",
+  "winapi",
+@@ -651,12 +648,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "log"
+-version = "0.4.17"
++version = "0.4.19"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
+-dependencies = [
+- "cfg-if",
+-]
++checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
+ 
+ [[package]]
+ name = "memchr"
+@@ -675,9 +669,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "mime"
+-version = "0.3.16"
++version = "0.3.17"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
++checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+ 
+ [[package]]
+ name = "mime_guess"
+@@ -697,12 +691,11 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+ 
+ [[package]]
+ name = "mio"
+-version = "0.8.5"
++version = "0.8.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e5d732bc30207a6423068df043e3d02e0735b155ad7ce1a6f76fe2baa5b158de"
++checksum = "927a765cd3fc26206e66b296465fa9d3e5ab003e651c1b3c060e7956d96b19d2"
+ dependencies = [
+  "libc",
+- "log",
+  "wasi",
+  "windows-sys",
+ ]
+@@ -714,28 +707,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "903970ae2f248d7275214cf8f387f8ba0c4ea7e3d87a320e85493db60ce28616"
+ 
+ [[package]]
+-name = "multipart"
+-version = "0.18.0"
++name = "multer"
++version = "2.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "00dec633863867f29cb39df64a397cdf4a6354708ddd7759f70c7fb51c5f9182"
++checksum = "01acbdc23469fd8fe07ab135923371d5f5a422fbf9c522158677c8eb15bc51c2"
+ dependencies = [
+- "buf_redux",
++ "bytes 1.4.0",
++ "encoding_rs",
++ "futures-util",
++ "http",
+  "httparse",
+  "log",
++ "memchr",
+  "mime",
+- "mime_guess",
+- "quick-error",
+- "rand",
+- "safemem",
+- "tempfile",
+- "twoway",
++ "spin",
++ "version_check",
+ ]
+ 
+ [[package]]
+ name = "nom"
+-version = "5.1.2"
++version = "5.1.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ffb4262d26ed83a1c0a33a38fe2bb15797329c85770da05e6b828ddb782627af"
++checksum = "08959a387a676302eebf4ddbcbc611da04285579f76f88ee0506c63b1a61dd4b"
+ dependencies = [
+  "memchr",
+  "version_check",
+@@ -743,9 +736,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "nom"
+-version = "7.1.1"
++version = "7.1.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a8903e5a29a317527874d0402f867152a3d21c908bb0b933e416c65e301d4c36"
++checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+ dependencies = [
+  "memchr",
+  "minimal-lexical",
+@@ -757,7 +750,7 @@ version = "0.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1a689b62ba71fda80458a77b6ace9371d6e6a5473300901383ebd101659b3352"
+ dependencies = [
+- "bindgen 0.61.0",
++ "bindgen 0.65.1",
+  "mozbuild",
+  "once_cell",
+  "pkcs11-bindings",
+@@ -768,25 +761,25 @@ dependencies = [
+ 
+ [[package]]
+ name = "num_cpus"
+-version = "1.13.1"
++version = "1.15.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
++checksum = "0fac9e2da13b5eb447a6ce3d392f23a29d8694bff781bf03a16cd9ac8697593b"
+ dependencies = [
+- "hermit-abi",
++ "hermit-abi 0.2.6",
+  "libc",
+ ]
+ 
+ [[package]]
+ name = "once_cell"
+-version = "1.15.0"
++version = "1.18.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e82dad04139b71a90c080c8463fe0dc7902db5192d939bd0950f074d014339e1"
++checksum = "dd8b5dd2ae5ed71462c540258bedcb51965123ad7e7ccf4b9a8cafaa4a63576d"
+ 
+ [[package]]
+ name = "openssl"
+-version = "0.10.42"
++version = "0.10.54"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "12fc0523e3bd51a692c8850d075d74dc062ccf251c0110668cbd921917118a13"
++checksum = "69b3f656a17a6cbc115b5c7a40c616947d213ba182135b014d6051b73ab6f019"
+ dependencies = [
+  "bitflags",
+  "cfg-if",
+@@ -799,9 +792,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "openssl-macros"
+-version = "0.1.0"
++version = "0.1.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b501e44f11665960c7e7fcf062c7d96a14ade4aa98116c004b2e37b5be7d736c"
++checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -810,11 +803,10 @@ dependencies = [
+ 
+ [[package]]
+ name = "openssl-sys"
+-version = "0.9.77"
++version = "0.9.88"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b03b84c3b2d099b81f0953422b4d4ad58761589d0229b5506356afca05a3670a"
++checksum = "c2ce0f250f34a308dcfdbb351f511359857d4ed2134ba715a4eadd46e1ffd617"
+ dependencies = [
+- "autocfg",
+  "cc",
+  "libc",
+  "pkg-config",
+@@ -829,24 +821,24 @@ checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
+ 
+ [[package]]
+ name = "percent-encoding"
+-version = "2.2.0"
++version = "2.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "478c572c3d73181ff3c2539045f6eb99e5491218eae919370993b890cdbdd98e"
++checksum = "9b2a4787296e9989611394c33f193f676704af1686e70b8f8033ab5ba9a35a94"
+ 
+ [[package]]
+ name = "pin-project"
+-version = "1.0.12"
++version = "1.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ad29a609b6bcd67fee905812e544992d216af9d755757c05ed2d0e15a74c6ecc"
++checksum = "c95a7476719eab1e366eaf73d0260af3021184f18177925b07f54b30089ceead"
+ dependencies = [
+  "pin-project-internal",
+ ]
+ 
+ [[package]]
+ name = "pin-project-internal"
+-version = "1.0.12"
++version = "1.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "069bdb1e05adc7a8990dce9cc75370895fbe4e3d58b9b73bf1aee56359344a55"
++checksum = "39407670928234ebc5e6e580247dd567ad73a3578460c5990f9503df207e8f07"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -867,30 +859,40 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+ 
+ [[package]]
+ name = "pkcs11-bindings"
+-version = "0.1.4"
++version = "0.1.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c20556de5b64f5d7213b8ea103b92261cac789b59978652d9cd831ba9f477c53"
++checksum = "d0fabbdbe64b22820753da90995b3a73d02907eaeeac6f2414962a566aaa18ea"
+ dependencies = [
+- "bindgen 0.61.0",
++ "bindgen 0.65.1",
+ ]
+ 
+ [[package]]
+ name = "pkg-config"
+-version = "0.3.25"
++version = "0.3.27"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1df8c4ec4b0627e53bdf214615ad287367e482558cf84b109250b37464dc03ae"
++checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
+ 
+ [[package]]
+ name = "ppv-lite86"
+-version = "0.2.16"
++version = "0.2.17"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "eb9f9e6e233e5c4a35559a617bf40a4ec447db2e84c20b55a6f83167b7e57872"
++checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
++
++[[package]]
++name = "prettyplease"
++version = "0.2.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3b69d39aab54d069e7f2fe8cb970493e7834601ca2d8c65fd7bbd183578080d1"
++dependencies = [
++ "proc-macro2",
++ "syn",
++]
+ 
+ [[package]]
+ name = "proc-macro2"
+-version = "1.0.47"
++version = "1.0.60"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5ea3d908b0e36316caf9e9e2c4625cdde190a7e6f440d794667ed17a1855e725"
++checksum = "dec2b086b7a862cf4de201096214fa870344cf922b2b30c167badb3af3195406"
+ dependencies = [
+  "unicode-ident",
+ ]
+@@ -903,9 +905,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+ 
+ [[package]]
+ name = "quote"
+-version = "1.0.21"
++version = "1.0.28"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "bbe448f377a7d6961e30f5955f9b8d106c3f5e449d493ee1b125c1d43c2b5179"
++checksum = "1b9ab9c7eadfd8df19006f1cf1a4aed13540ed5cbc047010ece5826e10825488"
+ dependencies = [
+  "proc-macro2",
+ ]
+@@ -940,20 +942,11 @@ dependencies = [
+  "getrandom",
+ ]
+ 
+-[[package]]
+-name = "redox_syscall"
+-version = "0.2.16"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
+-dependencies = [
+- "bitflags",
+-]
+-
+ [[package]]
+ name = "regex"
+-version = "1.6.0"
++version = "1.8.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4c4eb3267174b8c6c2f654116623910a0fef09c4753f8dd83db29c48a0df988b"
++checksum = "d0ab3ca65655bb1e41f2a8c8cd662eb4fb035e67c3f78da1d61dffe89d07300f"
+ dependencies = [
+  "aho-corasick",
+  "memchr",
+@@ -962,18 +955,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "regex-syntax"
+-version = "0.6.27"
++version = "0.7.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
+-
+-[[package]]
+-name = "remove_dir_all"
+-version = "0.5.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "3acd125665422973a33ac9d3dd2df85edad0f4ae9b00dafb1a05e43a9f5ef8e7"
+-dependencies = [
+- "winapi",
+-]
++checksum = "436b050e76ed2903236f032a59761c1eb99e1b0aead2c257922771dab1fc8c78"
+ 
+ [[package]]
+ name = "rpassword"
+@@ -999,45 +983,39 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+ 
+ [[package]]
+ name = "rustls-pemfile"
+-version = "0.2.1"
++version = "1.0.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5eebeaeb360c87bfb72e84abdb3447159c0eaececf1bef2aecd65a8be949d1c9"
++checksum = "d194b56d58803a43635bdc398cd17e383d6f71f9182b9a192c127ca42494a59b"
+ dependencies = [
+- "base64",
++ "base64 0.21.2",
+ ]
+ 
+ [[package]]
+ name = "ryu"
+-version = "1.0.11"
++version = "1.0.13"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4501abdff3ae82a1c1b477a17252eb69cee9e66eb915c1abaa4f44d873df9f09"
+-
+-[[package]]
+-name = "safemem"
+-version = "0.3.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ef703b7cb59335eae2eb93ceb664c0eb7ea6bf567079d843e09420219668e072"
++checksum = "f91339c0467de62360649f8d3e185ca8de4224ff281f66000de5eb2a77a79041"
+ 
+ [[package]]
+ name = "scoped-tls"
+-version = "1.0.0"
++version = "1.0.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ea6a9290e3c9cf0f18145ef7ffa62d68ee0bf5fcd651017e586dc7fd5da448c2"
++checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
+ 
+ [[package]]
+ name = "serde"
+-version = "1.0.147"
++version = "1.0.164"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d193d69bae983fc11a79df82342761dfbf28a99fc8d203dca4c3c1b590948965"
++checksum = "9e8c8cf938e98f769bc164923b06dce91cea1751522f46f8466461af04c9027d"
+ dependencies = [
+  "serde_derive",
+ ]
+ 
+ [[package]]
+ name = "serde_bytes"
+-version = "0.11.7"
++version = "0.11.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cfc50e8183eeeb6178dcb167ae34a8051d63535023ae38b5d8d12beae193d37b"
++checksum = "416bda436f9aab92e02c8e10d49a15ddd339cea90b6e340fe51ed97abb548294"
+ dependencies = [
+  "serde",
+ ]
+@@ -1054,9 +1032,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "serde_derive"
+-version = "1.0.147"
++version = "1.0.164"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4f1d362ca8fc9c3e3a7484440752472d68a6caa98f1ab81d99b5dfe517cec852"
++checksum = "d9735b638ccc51c28bf6914d90a2e9725b377144fc612c49a611fddd1b631d68"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -1065,9 +1043,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "serde_json"
+-version = "1.0.87"
++version = "1.0.96"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "6ce777b7b150d76b9cf60d28b55f5847135a003f7d7350c6be7a773508ce7d45"
++checksum = "057d394a50403bcac12672b2b18fb387ab6d289d957dab67dd201875391e52f1"
+ dependencies = [
+  "itoa",
+  "ryu",
+@@ -1086,17 +1064,6 @@ dependencies = [
+  "serde",
+ ]
+ 
+-[[package]]
+-name = "sha-1"
+-version = "0.10.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "028f48d513f9678cda28f6e4064755b3fbb2af6acd672f2c209b62323f7aea0f"
+-dependencies = [
+- "cfg-if",
+- "cpufeatures",
+- "digest",
+-]
+-
+ [[package]]
+ name = "sha1"
+ version = "0.10.5"
+@@ -1127,23 +1094,29 @@ checksum = "43b2853a4d09f215c24cc5489c992ce46052d359b5109343cbafbf26bc62f8a3"
+ 
+ [[package]]
+ name = "slab"
+-version = "0.4.7"
++version = "0.4.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4614a76b2a8be0058caa9dbbaf66d988527d86d003c11a94fbd335d7661edcef"
++checksum = "6528351c9bc8ab22353f9d776db39a20288e8d6c37ef8cfe3317cf875eecfc2d"
+ dependencies = [
+  "autocfg",
+ ]
+ 
+ [[package]]
+ name = "socket2"
+-version = "0.4.7"
++version = "0.4.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "02e2d2db9033d13a1567121ddd7a095ee144db4e1ca1b1bda3419bc0da294ebd"
++checksum = "64a4a911eed85daf18834cfaa86a79b7d266ff93ff5ba14005426219480ed662"
+ dependencies = [
+  "libc",
+  "winapi",
+ ]
+ 
++[[package]]
++name = "spin"
++version = "0.9.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
++
+ [[package]]
+ name = "strsim"
+ version = "0.8.0"
+@@ -1152,34 +1125,20 @@ checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
+ 
+ [[package]]
+ name = "syn"
+-version = "1.0.103"
++version = "2.0.18"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a864042229133ada95abf3b54fdc62ef5ccabe9515b64717bcb9a1919e59445d"
++checksum = "32d41677bcbe24c20c52e7c70b0d8db04134c5d1066bf98662e2871ad200ea3e"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+  "unicode-ident",
+ ]
+ 
+-[[package]]
+-name = "tempfile"
+-version = "3.3.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5cdb1ef4eaeeaddc8fbd371e5017057064af0911902ef36b39801f67cc6d79e4"
+-dependencies = [
+- "cfg-if",
+- "fastrand",
+- "libc",
+- "redox_syscall",
+- "remove_dir_all",
+- "winapi",
+-]
+-
+ [[package]]
+ name = "termcolor"
+-version = "1.1.3"
++version = "1.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "bab24d30b911b2376f3a13cc2cd443142f0c81dda04c118693e35b3835757755"
++checksum = "be55cf8942feac5c765c2c993422806843c9a9a45d4d5c407ad6dd2ea95eb9b6"
+ dependencies = [
+  "winapi-util",
+ ]
+@@ -1195,18 +1154,18 @@ dependencies = [
+ 
+ [[package]]
+ name = "thiserror"
+-version = "1.0.37"
++version = "1.0.40"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "10deb33631e3c9018b9baf9dcbbc4f737320d2b576bac10f6aefa048fa407e3e"
++checksum = "978c9a314bd8dc99be594bc3c175faaa9794be04a5a5e153caba6915336cebac"
+ dependencies = [
+  "thiserror-impl",
+ ]
+ 
+ [[package]]
+ name = "thiserror-impl"
+-version = "1.0.37"
++version = "1.0.40"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "982d17546b47146b28f7c22e3d08465f6b8903d0ea13c1660d9d84a6e7adcdbb"
++checksum = "f9456a42c5b0d803c8cd86e73dd7cc9edd429499f37a3550d286d5e86720569f"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -1224,33 +1183,32 @@ dependencies = [
+ 
+ [[package]]
+ name = "tinyvec_macros"
+-version = "0.1.0"
++version = "0.1.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
++checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+ 
+ [[package]]
+ name = "tokio"
+-version = "1.21.2"
++version = "1.28.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a9e03c497dc955702ba729190dc4aac6f2a0ce97f913e5b1b5912fc5039d9099"
++checksum = "94d7b1cfd2aa4011f2de74c2c4c63665e27a71006b0a192dcd2710272e73dfa2"
+ dependencies = [
+  "autocfg",
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "libc",
+- "memchr",
+  "mio",
+  "num_cpus",
+  "pin-project-lite",
+  "socket2",
+  "tokio-macros",
+- "winapi",
++ "windows-sys",
+ ]
+ 
+ [[package]]
+ name = "tokio-macros"
+-version = "1.8.0"
++version = "2.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9724f9a975fb987ef7a3cd9be0350edcbe130698af5b8f7a631e23d42d052484"
++checksum = "630bdcf245f78637c13ec01ffae6187cca34625e8c63150d424b59e55af2675e"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -1259,9 +1217,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "tokio-stream"
+-version = "0.1.11"
++version = "0.1.14"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d660770404473ccd7bc9f8b28494a811bc18542b915c0855c51e8f419d5223ce"
++checksum = "397c988d37662c7dda6d2208364a706264bf3d6138b11d436cbac0ad38832842"
+ dependencies = [
+  "futures-core",
+  "pin-project-lite",
+@@ -1270,9 +1228,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "tokio-tungstenite"
+-version = "0.17.2"
++version = "0.18.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f714dd15bead90401d77e04243611caec13726c2408afd5b31901dfcdcb3b181"
++checksum = "54319c93411147bced34cb5609a80e0a8e44c5999c93903a81cd866630ec0bfd"
+ dependencies = [
+  "futures-util",
+  "log",
+@@ -1282,11 +1240,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "tokio-util"
+-version = "0.7.4"
++version = "0.7.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0bb2e075f03b3d66d8d8785356224ba688d2906a371015e225beeb65ca92c740"
++checksum = "806fe8c2c87eccc8b3267cbae29ed3ab2d0bd37fca70ab622e46aaa9375ddb7d"
+ dependencies = [
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "futures-core",
+  "futures-sink",
+  "pin-project-lite",
+@@ -1296,9 +1254,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "toml"
+-version = "0.5.9"
++version = "0.5.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8d82e1a7758622a465f8cee077614c73484dac5b836c02ff6a40d5d1010324d7"
++checksum = "f4f7f0dd8d50a853a531c426359045b1998f04219d88799810762cd4ad314234"
+ dependencies = [
+  "serde",
+ ]
+@@ -1323,52 +1281,43 @@ dependencies = [
+ 
+ [[package]]
+ name = "tracing-core"
+-version = "0.1.30"
++version = "0.1.31"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "24eb03ba0eab1fd845050058ce5e616558e8f8d8fca633e6b163fe25c797213a"
++checksum = "0955b8137a1df6f1a2e9a37d8a6656291ff0297c1a97c24e0d8425fe2312f79a"
+ dependencies = [
+  "once_cell",
+ ]
+ 
+ [[package]]
+ name = "try-lock"
+-version = "0.2.3"
++version = "0.2.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
++checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
+ 
+ [[package]]
+ name = "tungstenite"
+-version = "0.17.3"
++version = "0.18.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e27992fd6a8c29ee7eef28fc78349aa244134e10ad447ce3b9f0ac0ed0fa4ce0"
++checksum = "30ee6ab729cd4cf0fd55218530c4522ed30b7b6081752839b68fcec8d0960788"
+ dependencies = [
+- "base64",
++ "base64 0.13.1",
+  "byteorder",
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "http",
+  "httparse",
+  "log",
+  "rand",
+- "sha-1",
++ "sha1",
+  "thiserror",
+  "url",
+  "utf-8",
+ ]
+ 
+-[[package]]
+-name = "twoway"
+-version = "0.1.8"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "59b11b2b5241ba34be09c3cc85a36e56e48f9888862e19cedf23336d35316ed1"
+-dependencies = [
+- "memchr",
+-]
+-
+ [[package]]
+ name = "typenum"
+-version = "1.15.0"
++version = "1.16.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
++checksum = "497961ef93d974e23eb6f433eb5fe1b7930b659f06d12dec6fc44a8f554c0bba"
+ 
+ [[package]]
+ name = "unicase"
+@@ -1381,15 +1330,15 @@ dependencies = [
+ 
+ [[package]]
+ name = "unicode-bidi"
+-version = "0.3.8"
++version = "0.3.13"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "099b7128301d285f79ddd55b9a83d5e6b9e97c92e0ea0daebee7263e932de992"
++checksum = "92888ba5573ff080736b3648696b70cafad7d250551175acbaa4e0385b3e1460"
+ 
+ [[package]]
+ name = "unicode-ident"
+-version = "1.0.5"
++version = "1.0.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "6ceab39d59e4c9499d4e5a8ee0e2735b891bb7308ac83dfb4e80cad195c9f6f3"
++checksum = "b15811caf2415fb889178633e7724bad2509101cde276048e013b9def5e51fa0"
+ 
+ [[package]]
+ name = "unicode-normalization"
+@@ -1408,9 +1357,9 @@ checksum = "c0edd1e5b14653f783770bce4a4dabb4a5108a5370a5f5d8cfe8710c361f6c8b"
+ 
+ [[package]]
+ name = "url"
+-version = "2.3.1"
++version = "2.4.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0d68c799ae75762b8c3fe375feb6600ef5602c883c5d21eb51c09f22b83c4643"
++checksum = "50bff7831e19200a85b17131d085c25d7811bc4e186efdaf54bbd132994a88cb"
+ dependencies = [
+  "form_urlencoded",
+  "idna",
+@@ -1453,11 +1402,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "warp"
+-version = "0.3.3"
++version = "0.3.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ed7b8be92646fc3d18b06147664ebc5f48d222686cb11a8755e561a735aacc6d"
++checksum = "ba431ef570df1287f7f8b07e376491ad54f84d26ac473489427231e1718e1f69"
+ dependencies = [
+- "bytes 1.2.1",
++ "bytes 1.4.0",
+  "futures-channel",
+  "futures-util",
+  "headers",
+@@ -1466,7 +1415,7 @@ dependencies = [
+  "log",
+  "mime",
+  "mime_guess",
+- "multipart",
++ "multer",
+  "percent-encoding",
+  "pin-project",
+  "rustls-pemfile",
+@@ -1530,9 +1479,18 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+ 
+ [[package]]
+ name = "windows-sys"
+-version = "0.42.0"
++version = "0.48.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "677d2418bec65e3338edb076e806bc1ec15693c5d0104683f2efe857f61056a9"
++dependencies = [
++ "windows-targets",
++]
++
++[[package]]
++name = "windows-targets"
++version = "0.48.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5a3e1820f08b8513f676f7ab6c1f99ff312fb97b553d30ff4dd86f9f15728aa7"
++checksum = "7b1eb6f0cd7c80c79759c929114ef071b87354ce476d9d94271031c0497adfd5"
+ dependencies = [
+  "windows_aarch64_gnullvm",
+  "windows_aarch64_msvc",
+@@ -1545,42 +1503,42 @@ dependencies = [
+ 
+ [[package]]
+ name = "windows_aarch64_gnullvm"
+-version = "0.42.0"
++version = "0.48.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "41d2aa71f6f0cbe00ae5167d90ef3cfe66527d6f613ca78ac8024c3ccab9a19e"
++checksum = "91ae572e1b79dba883e0d315474df7305d12f569b400fcf90581b06062f7e1bc"
+ 
+ [[package]]
+ name = "windows_aarch64_msvc"
+-version = "0.42.0"
++version = "0.48.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "dd0f252f5a35cac83d6311b2e795981f5ee6e67eb1f9a7f64eb4500fbc4dcdb4"
++checksum = "b2ef27e0d7bdfcfc7b868b317c1d32c641a6fe4629c171b8928c7b08d98d7cf3"
+ 
+ [[package]]
+ name = "windows_i686_gnu"
+-version = "0.42.0"
++version = "0.48.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "fbeae19f6716841636c28d695375df17562ca208b2b7d0dc47635a50ae6c5de7"
++checksum = "622a1962a7db830d6fd0a69683c80a18fda201879f0f447f065a3b7467daa241"
+ 
+ [[package]]
+ name = "windows_i686_msvc"
+-version = "0.42.0"
++version = "0.48.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "84c12f65daa39dd2babe6e442988fc329d6243fdce47d7d2d155b8d874862246"
++checksum = "4542c6e364ce21bf45d69fdd2a8e455fa38d316158cfd43b3ac1c5b1b19f8e00"
+ 
+ [[package]]
+ name = "windows_x86_64_gnu"
+-version = "0.42.0"
++version = "0.48.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "bf7b1b21b5362cbc318f686150e5bcea75ecedc74dd157d874d754a2ca44b0ed"
++checksum = "ca2b8a661f7628cbd23440e50b05d705db3686f894fc9580820623656af974b1"
+ 
+ [[package]]
+ name = "windows_x86_64_gnullvm"
+-version = "0.42.0"
++version = "0.48.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "09d525d2ba30eeb3297665bd434a54297e4170c7f1a44cad4ef58095b4cd2028"
++checksum = "7896dbc1f41e08872e9d5e8f8baa8fdd2677f29468c4e156210174edc7f7b953"
+ 
+ [[package]]
+ name = "windows_x86_64_msvc"
+-version = "0.42.0"
++version = "0.48.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f40009d85759725a34da6d89a94e63d7bdc50a862acf0dbc7c8e488f1edcb6f5"
++checksum = "1a515f5799fe4961cb532f983ce2b23082366b898e52ffbce459c86f67c8378a"
+diff --git a/third_party/rust/authenticator/src/ctap2/commands/get_info.rs b/third_party/rust/authenticator/src/ctap2/commands/get_info.rs
+index d2aea1908b75..3154f07a3286 100644
+--- a/third_party/rust/authenticator/src/ctap2/commands/get_info.rs
++++ b/third_party/rust/authenticator/src/ctap2/commands/get_info.rs
+@@ -379,6 +379,9 @@ impl<'de> Deserialize<'de> for AuthenticatorInfo {
+                 formatter.write_str("a byte array")
+             }
+ 
++            // here the authenticator return its info as a CBOR map
++            // so we are parsing it using the key value pairs
++            // https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#authenticatorGetInfo
+             fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+             where
+                 M: MapAccess<'de>,
+diff --git a/third_party/rust/authenticator/src/statemachine.rs b/third_party/rust/authenticator/src/statemachine.rs
+index a1a1c5372f60..42869326c686 100644
+--- a/third_party/rust/authenticator/src/statemachine.rs
++++ b/third_party/rust/authenticator/src/statemachine.rs
+@@ -2,6 +2,8 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
++use serde_cbor::error;
++
+ use crate::authenticatorservice::{RegisterArgs, SignArgs};
+ use crate::consts::PARAMETER_SIZE;
+ use crate::crypto::COSEAlgorithm;
+@@ -195,6 +197,7 @@ impl StateMachine {
+         Some(dev)
+     }
+ 
++    //NOTE - This is used to send status to statusCallback
+     fn ask_user_for_pin<U>(
+         was_invalid: bool,
+         retries: Option<u8>,
+@@ -228,6 +231,9 @@ impl StateMachine {
+     /// Try to fetch PinUvAuthToken from the device and derive from it PinUvAuthParam.
+     /// Prefer UV, fallback to PIN.
+     /// Prefer newer pinUvAuth-methods, if supported by the device.
++    /*NOTE - This actually verifies the pin, takes the fingerprint from user and then returns the pinUvAuthParam
++    This is not involved in showing prompt.
++    */
+     fn get_pin_uv_auth_param<T: PinUvAuthCommand + Request<V>, V>(
+         cmd: &mut T,
+         dev: &mut Device,
+@@ -246,11 +252,13 @@ impl StateMachine {
+         cmd.set_uv_option(None);
+ 
+         // CTAP1/U2F-only devices do not support user verification, so we skip it
++
++        // Here we are using CTAP -> authenticatorGetInfo command.
+         let info = match dev.get_authenticator_info() {
+             Some(info) => info,
+             None => return Ok(PinUvAuthResult::DeviceIsCtap1),
+         };
+-
++        // error!("Info: {:?}", info);
+         // Only use UV, if the device supports it and we don't skip it
+         // which happens as a fallback, if UV-usage failed too many times
+         // Note: In theory, we could also repeatedly query GetInfo here and check
+@@ -348,6 +356,15 @@ impl StateMachine {
+     /// the device, Err() otherwise.
+     /// Handles asking the user for a PIN, if needed and sending StatusUpdates
+     /// regarding PIN and UV usage.
++    //NOTE - AuthenticatorError are generated internally by the authenticator
++    //NOTE- In status update using send_status() we send a modified version of request to the statusCallback
++
++    /*NOTE Here this just sends the prompts to the user and in case of pin takes the pin
++    then in the loop its when it comes again it checks the status from get_pin_uv_auth_param()
++    and if its success then it sends the request to the device.
++    get_pin_uv_auth_param() is the one which actually takes the correct pin token or fingerprint from
++    authenticator and returns the status, which is then matched with.
++    */
+     fn determine_puap_if_needed<T: PinUvAuthCommand + Request<V>, U, V>(
+         cmd: &mut T,
+         dev: &mut Device,
+@@ -375,7 +392,9 @@ impl StateMachine {
+                         return Err(());
+                     }
+                 }
++                //NOTE - This is the actual place for PIN on solo key failing out
+                 Err(AuthenticatorError::PinError(PinError::InvalidPin(retries))) => {
++                    error!("incorrect pin");
+                     if let Ok(pin) = Self::ask_user_for_pin(true, retries, status, callback) {
+                         cmd.set_pin(Some(pin));
+                         continue;
+@@ -383,14 +402,18 @@ impl StateMachine {
+                         return Err(());
+                     }
+                 }
++                //NOTE - This is the actual place for fingerprint failing
+                 Err(AuthenticatorError::PinError(PinError::InvalidUv(retries))) => {
++                    error!("incorrect fingerprint");
+                     if retries == Some(0) {
++                        //NOTE Too many incorrect fingerprint attemps, so ask for pin.
+                         skip_uv = true;
+                     }
+                     send_status(
+                         status,
+                         StatusUpdate::PinUvError(StatusPinUv::InvalidUv(retries)),
+-                    )
++                    );
++                    continue;
+                 }
+                 Err(e @ AuthenticatorError::PinError(PinError::PinAuthBlocked)) => {
+                     send_status(
+@@ -434,6 +457,16 @@ impl StateMachine {
+         }
+         Err(())
+     }
++    // pub fn supports_fingerprint(dev: &mut Device,) -> bool {
++    //     let info = match dev.get_authenticator_info() {
++    //         Some(info) => info,
++    //         None => return false
++    //     };
++    //     if info.options.bio_enroll == Some(true) {
++    //         return true;
++    //     }
++    //     return false;
++    // }
+ 
+     pub fn register(
+         &mut self,
+@@ -559,12 +592,16 @@ impl StateMachine {
+                 );
+ 
+                 let mut skip_uv = false;
++                //NOTE - This probably runs just once, because puap is already in loop,
++                // so it will give correct auth only or error out.
++                // But in case there is an exception in some function, it runs again
+                 while alive() {
+                     // Requesting both because pre-flighting (credential list filtering)
+                     // can potentially send GetAssertion-commands
+                     let permissions = PinUvAuthTokenPermission::MakeCredential
+                         | PinUvAuthTokenPermission::GetAssertion;
+ 
++                    //NOTE - Get the pin, and store into the credential struct
+                     let pin_uv_auth_result = match Self::determine_puap_if_needed(
+                         &mut makecred,
+                         &mut dev,
+@@ -620,7 +657,9 @@ impl StateMachine {
+                     debug!("{makecred:?} using {pin_uv_auth_result:?}");
+                     debug!("------------------------------------------------------------------");
+                     send_status(&status, crate::StatusUpdate::PresenceRequired);
++                    //NOTE - Send the make credential request inlcuding the pin to the authenticator
+                     let resp = dev.send_msg_cancellable(&makecred, alive);
++                    //NOTE - This issues the success command, it is just used to log debug message and nothing more.
+                     if resp.is_ok() {
+                         send_status(
+                             &status,
+@@ -634,8 +673,12 @@ impl StateMachine {
+                         // request.
+                         let _ = selector.send(DeviceSelectorEvent::SelectedToken(dev.id()));
+                     }
++                    //NOTE - The errors here are mostly not raised because,
++                    // before sending credential request to the authenticator in resp above, we have already checked
++                    // for the pin, so it being incorrect wont be a problem here.
+                     match resp {
+                         Ok(MakeCredentialsResult(attestation)) => {
++                            // info!("register complete after presenece");
+                             callback.call(Ok(RegisterResult::CTAP2(attestation)));
+                             break;
+                         }
+@@ -688,6 +731,11 @@ impl StateMachine {
+                             callback.call(Err(AuthenticatorError::CredentialExcluded));
+                             break;
+                         }
++                        Err(HIDError::Command(CommandError::StatusCode(StatusCode::KeyStoreFull,_))) => {
++                            warn!("keystore full");
++                            send_status(&status, StatusUpdate::DeviceKeyStoreFull);
++                            break;
++                        }
+                         Err(e) => {
+                             warn!("error happened: {e}");
+                             callback.call(Err(AuthenticatorError::HIDError(e)));
+@@ -697,7 +745,8 @@ impl StateMachine {
+                 }
+             },
+         );
+-
++        //NOTE - The whole registration flow is actually a transaction, and after it has completed we are
++        //sending back the response.
+         self.transaction = Some(try_or!(transaction, |e| cbc.call(Err(e))));
+     }
+ 
+diff --git a/third_party/rust/authenticator/src/status_update.rs b/third_party/rust/authenticator/src/status_update.rs
+index f01cbd0cea56..7d815d1cc701 100644
+--- a/third_party/rust/authenticator/src/status_update.rs
++++ b/third_party/rust/authenticator/src/status_update.rs
+@@ -79,6 +79,8 @@ pub enum StatusUpdate {
+             Option<AuthenticatorInfo>,
+         ),
+     ),
++    DeviceKeyStoreFull,
++    // FingerprintSupported(bool),
+ }
+ 
+ pub(crate) fn send_status(status: &Sender<StatusUpdate>, msg: StatusUpdate) {

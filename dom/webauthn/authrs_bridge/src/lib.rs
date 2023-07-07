@@ -28,7 +28,7 @@ use nserror::{
 };
 use nsstring::{nsACString, nsCString, nsString};
 use serde_cbor;
-use std::cell::RefCell;
+use std::{cell::RefCell, error};
 use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
 use std::sync::{Arc, Mutex};
 use thin_vec::ThinVec;
@@ -67,6 +67,15 @@ fn make_pin_required_prompt(
     )
 }
 
+fn make_incorrect_fingerprint_prompt(
+    tid: u64,
+    origin: &str,
+    browsing_context_id: u64,
+    retries: i64,) -> String {
+    format!(
+        r#"{{"is_ctap2":true,"action":"invalid-fingerprint","tid":{tid},"origin":"{origin}","browsingContextId":{browsing_context_id},"retriesLeft":{retries}}}"#,
+    )
+}
 fn authrs_to_nserror(e: &AuthenticatorError) -> nsresult {
     match e {
         AuthenticatorError::U2FToken(U2FTokenError::NotSupported) => NS_ERROR_DOM_NOT_SUPPORTED_ERR,
@@ -233,6 +242,7 @@ impl Controller {
         }
     }
 
+// This is used to call FinishRegister in WebAuthnController.cpp. This completes the registration
     fn finish_register(
         &self,
         tid: u64,
@@ -293,7 +303,7 @@ impl Controller {
 // AuthrsTransport. The u64 in PinReceiver is a transaction ID, which the AuthrsTransport uses the
 // transaction ID as a consistency check.
 type PinReceiver = Option<(u64, Sender<Pin>)>;
-
+// let mut fingerprint_supported = false;
 fn status_callback(
     status_rx: Receiver<StatusUpdate>,
     tid: u64,
@@ -304,6 +314,10 @@ fn status_callback(
 ) {
     loop {
         match status_rx.recv() {
+            // Ok(StatusUpdate::FingerprintSupported) => {
+            //     fingerprint_supported = true;
+            //     // debug!("STATUS: Fingerprint supported");
+            // }
             Ok(StatusUpdate::DeviceAvailable { dev_info }) => {
                 debug!("STATUS: device available: {}", dev_info)
             }
@@ -327,6 +341,16 @@ fn status_callback(
                 let notification_str = make_prompt("presence", tid, origin, browsing_context_id);
                 controller.send_prompt(tid, &notification_str);
             }
+            // Ok(StatusUpdate::PresenceRequired(fingerprint_supported)) => {
+            //     if(fingerprint_supported){
+            //         let notification_str = make_prompt("presence-fp", tid, origin, browsing_context_id);
+            //         controller.send_prompt(tid, &notification_str);
+            //     }
+            //     else{
+            //         let notification_str = make_prompt("presence", tid, origin, browsing_context_id);
+            //         controller.send_prompt(tid, &notification_str);
+            //     }
+            // }
             Ok(StatusUpdate::PinUvError(StatusPinUv::PinRequired(sender))) => {
                 let guard = pin_receiver.lock();
                 if let Ok(mut entry) = guard {
@@ -368,29 +392,32 @@ fn status_callback(
                 let notification_str = make_prompt("pin-not-set", tid, origin, browsing_context_id);
                 controller.send_prompt(tid, &notification_str);
             }
-            Ok(StatusUpdate::PinUvError(StatusPinUv::InvalidUv(attempts))) => {
-                let notification_str = make_uv_invalid_error_prompt(
+            Ok(StatusUpdate::PinUvError(StatusPinUv::InvalidUv(retries))) => {
+                // info!("invalid fingerprint update");
+                let notification_str = make_incorrect_fingerprint_prompt(
                     tid,
                     origin,
                     browsing_context_id,
-                    attempts.map_or(-1, |x| x as i64),
+                    retries.map_or(-1, |x| x as i64),
                 );
                 controller.send_prompt(tid, &notification_str);
             }
-            Ok(StatusUpdate::PinUvError(StatusPinUv::UvBlocked)) => {
-                let notification_str = make_prompt("uv-blocked", tid, origin, browsing_context_id);
-                controller.send_prompt(tid, &notification_str);
-            }
-            Ok(StatusUpdate::PinUvError(StatusPinUv::PinIsTooShort))
-            | Ok(StatusUpdate::PinUvError(StatusPinUv::PinIsTooLong(..))) => {
-                // These should never happen.
-                warn!("STATUS: Got unexpected StatusPinUv-error.");
+            //NOTE - Incorrect fingerprint error actually does nothing and is not handled. It is just catched
+            // with other non handled exceptions. But have fixed it.
+            Ok(StatusUpdate::PinUvError(e)) => {
+                warn!("Unexpected error: {:?}", e)
             }
             Ok(StatusUpdate::InteractiveManagement((_, dev_info, auth_info))) => {
                 debug!(
                     "STATUS: interactive management: {}, {:?}",
                     dev_info, auth_info
                 );
+            }
+            Ok(StatusUpdate::DeviceKeyStoreFull) => {
+                debug!("STATUS: device keystore full");
+                let notification_str =
+                    make_prompt("keystore-full", tid, origin, browsing_context_id);
+                controller.send_prompt(tid, &notification_str);
             }
             Err(RecvError) => {
                 debug!("STATUS: end");
@@ -600,8 +627,12 @@ impl AuthrsTransport {
                         controller.send_prompt(tid, &notification_str);
                         Err(e)
                     }
-                    Err(e) => Err(e),
+                    Err(e) => {
+                        Err(e)
+                    },
                 };
+                // The resutlt<RegisterResult, AuthenticatorError> is sent to finish register.
+                // It checks for any errors and then returns the result from C++ to main process.
                 let _ = controller.finish_register(tid, result);
             }),
         );

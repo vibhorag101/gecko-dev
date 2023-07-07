@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { XPCOMUtils } = ChromeUtils.importESModule(
+ var { XPCOMUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
 var { AppConstants } = ChromeUtils.importESModule(
@@ -7604,7 +7604,11 @@ var WebAuthnPromptHelper = {
 
     if (data.action == "presence") {
       this.presence_required(mgr, data);
-    } else if (data.action == "register-direct") {
+    }
+    else if (data.action == "presence-fp") {
+      this.presence_required_fp(mgr, data);
+    }
+    else if (data.action == "register-direct") {
       this.registerDirect(mgr, data);
     } else if (data.action == "pin-required") {
       this.pin_required(mgr, data);
@@ -7678,6 +7682,26 @@ var WebAuthnPromptHelper = {
         "webauthn.pinNotSetPrompt"
       );
     }
+    else if(data.action =="invalid-fingerprint"){
+      this.invalidFingerPrintPrompt(mgr,data)
+    }
+    else if(data.action=="keystore-full"){
+      this.show_info(
+        mgr,
+        data.origin,
+        data.tid,
+        "storeFull",
+        "webauthn.storeFullPrompt"
+      );
+    }
+  },
+  invalidFingerPrintPrompt(mgr, { origin, tid,retriesLeft}) {
+    if(retriesLeft==1){
+      this.show_info(mgr,origin,tid,"invalidFingerprint","webauthn.incorrect-fingerprint-prompt-last")
+    }
+    else{
+      this.show_info(mgr,origin,tid,"invalidFingerprint","webauthn.incorrect-fingerprint-prompt")
+    }
   },
 
   prompt_for_password(origin, wasInvalid, retriesLeft, aPassword) {
@@ -7750,12 +7774,28 @@ var WebAuthnPromptHelper = {
       mgr.cancel(tid);
     }
   },
-
+  //NOTE - Unlike pin_required, which also helps in taking the pin input from the user
+  // this only shows the prompt for presence like fingerprint or button press and not take any input.
   presence_required(mgr, { origin, tid }) {
     let mainAction = this.buildCancelAction(mgr, tid);
     let options = { escAction: "buttoncommand" };
     let secondaryActions = [];
     let message = "webauthn.userPresencePrompt";
+    this.show(
+      tid,
+      "presence",
+      message,
+      origin,
+      mainAction,
+      secondaryActions,
+      options
+    );
+  },
+  presence_required_fp(mgr, { origin, tid }) {
+    let mainAction = this.buildCancelAction(mgr, tid);
+    let options = { escAction: "buttoncommand" };
+    let secondaryActions = [];
+    let message = "webauthn.userPresencePromptFP";
     this.show(
       tid,
       "presence",
