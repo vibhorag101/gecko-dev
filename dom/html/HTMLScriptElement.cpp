@@ -142,21 +142,6 @@ void HTMLScriptElement::SetText(const nsAString& aValue, ErrorResult& aRv) {
 // variation of this code in SVGScriptElement - check if changes
 // need to be transfered when modifying
 
-bool HTMLScriptElement::GetScriptType(nsAString& aType) {
-  nsAutoString type;
-  if (!GetAttr(kNameSpaceID_None, nsGkAtoms::type, type)) {
-    return false;
-  }
-
-  // ASCII whitespace https://infra.spec.whatwg.org/#ascii-whitespace:
-  // U+0009 TAB, U+000A LF, U+000C FF, U+000D CR, or U+0020 SPACE.
-  static const char kASCIIWhitespace[] = "\t\n\f\r ";
-  type.Trim(kASCIIWhitespace);
-
-  aType.Assign(type);
-  return true;
-}
-
 void HTMLScriptElement::GetScriptText(nsAString& text) const {
   GetText(text, IgnoreErrors());
 }
@@ -165,39 +150,19 @@ void HTMLScriptElement::GetScriptCharset(nsAString& charset) {
   GetCharset(charset);
 }
 
-void HTMLScriptElement::FreezeExecutionAttrs(Document* aOwnerDoc) {
+void HTMLScriptElement::FreezeExecutionAttrs(const Document* aOwnerDoc) {
   if (mFrozen) {
     return;
   }
 
-  MOZ_ASSERT((mKind != ScriptKind::eModule) &&
-             (mKind != ScriptKind::eImportMap) && !mAsync && !mDefer &&
-             !mExternal);
-
   // Determine whether this is a(n) classic/module/importmap script.
-  nsAutoString type;
-  GetScriptType(type);
-  if (!type.IsEmpty()) {
-    if (aOwnerDoc->ModuleScriptsEnabled() &&
-        type.LowerCaseEqualsASCII("module")) {
-      mKind = ScriptKind::eModule;
-    }
-
-    // https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
-    // Step 11. Otherwise, if the script block's type string is an ASCII
-    // case-insensitive match for the string "importmap", then set el's type to
-    // "importmap".
-    if (aOwnerDoc->ImportMapsEnabled() &&
-        type.LowerCaseEqualsASCII("importmap")) {
-      mKind = ScriptKind::eImportMap;
-    }
-  }
+  DetermineKindFromType(aOwnerDoc);
 
   // variation of this code in SVGScriptElement - check if changes
   // need to be transfered when modifying.  Note that we don't use GetSrc here
   // because it will return the base URL when the attr value is "".
   nsAutoString src;
-  if (GetAttr(kNameSpaceID_None, nsGkAtoms::src, src)) {
+  if (GetAttr(nsGkAtoms::src, src)) {
     // Empty src should be treated as invalid URL.
     if (!src.IsEmpty()) {
       nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(mUri), src,
@@ -242,7 +207,7 @@ mozilla::dom::ReferrerPolicy HTMLScriptElement::GetReferrerPolicy() {
 }
 
 bool HTMLScriptElement::HasScriptContent() {
-  return (mFrozen ? mExternal : HasAttr(kNameSpaceID_None, nsGkAtoms::src)) ||
+  return (mFrozen ? mExternal : HasAttr(nsGkAtoms::src)) ||
          nsContentUtils::HasNonEmptyTextContent(this);
 }
 

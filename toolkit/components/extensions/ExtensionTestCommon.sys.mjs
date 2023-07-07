@@ -10,17 +10,12 @@
  */
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
-);
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-
 ChromeUtils.defineESModuleGetters(lazy, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   Assert: "resource://testing-common/Assert.sys.mjs",
   Extension: "resource://gre/modules/Extension.sys.mjs",
   ExtensionData: "resource://gre/modules/Extension.sys.mjs",
@@ -473,7 +468,9 @@ ExtensionTestCommon = class ExtensionTestCommon {
     );
     let zipW = new ZipWriter();
 
-    let file = lazy.FileUtils.getFile("TmpD", [baseName]);
+    let file = new lazy.FileUtils.File(
+      PathUtils.join(PathUtils.tempDir, baseName)
+    );
     file.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, lazy.FileUtils.PERMS_FILE);
 
     const MODE_WRONLY = 0x02;
@@ -596,7 +593,7 @@ ExtensionTestCommon = class ExtensionTestCommon {
       //   - browserAction/pageAction.
       //   - tabs.create, tabs.update, tabs.remove (uses GeckoViewTabBridge).
       //   - downloads API
-      //   - browsingData API (via ExtensionBrowsingData.jsm).
+      //   - browsingData API (via ExtensionBrowsingData.sys.mjs).
       //
       // In xpcshell tests, the AddonManager is optional, so the AddonManager
       // cannot unconditionally be enabled.

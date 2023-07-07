@@ -246,7 +246,7 @@ RefPtr<MediaDeviceSetRefCnt> MediaDevices::FilterExposedDevices(
       !Preferences::GetBool("media.setsinkid.enabled") ||
       !FeaturePolicyUtils::IsFeatureAllowed(doc, u"speaker-selection"_ns);
 
-  if (doc->ShouldResistFingerprinting(RFPTarget::Unknown)) {
+  if (doc->ShouldResistFingerprinting(RFPTarget::MediaDevices)) {
     RefPtr fakeEngine = new MediaEngineFake();
     fakeEngine->EnumerateDevices(MediaSourceEnum::Microphone,
                                  MediaSinkEnum::Other, exposed);
@@ -425,12 +425,17 @@ void MediaDevices::ResumeEnumerateDevices(
 
 void MediaDevices::ResolveEnumerateDevicesPromise(
     Promise* aPromise, const LocalMediaDeviceSet& aDevices) const {
+  nsCOMPtr<nsPIDOMWindowInner> window = GetOwner();
+  auto windowId = window->WindowID();
   nsTArray<RefPtr<MediaDeviceInfo>> infos;
   bool legacy = StaticPrefs::media_devices_enumerate_legacy_enabled();
+  bool capturePermitted =
+      legacy &&
+      MediaManager::Get()->IsActivelyCapturingOrHasAPermission(windowId);
 
   for (const RefPtr<LocalMediaDevice>& device : aDevices) {
     bool exposeInfo = CanExposeInfo(device->Kind()) || legacy;
-    bool exposeLabel = legacy ? DeviceInformationCanBeExposed() : exposeInfo;
+    bool exposeLabel = legacy ? capturePermitted : exposeInfo;
     infos.AppendElement(MakeRefPtr<MediaDeviceInfo>(
         exposeInfo ? device->mID : u""_ns, device->Kind(),
         exposeLabel ? device->mName : u""_ns,
@@ -726,7 +731,7 @@ void MediaDevices::OnDeviceChange() {
 
   if (nsContentUtils::ShouldResistFingerprinting(
           "Guarding the more expensive RFP check with a simple one",
-          RFPTarget::Unknown)) {
+          RFPTarget::MediaDevices)) {
     nsCOMPtr<nsPIDOMWindowInner> window = GetOwner();
     auto* wrapper = GetWrapper();
     if (!window && wrapper) {
@@ -738,7 +743,7 @@ void MediaDevices::OnDeviceChange() {
     }
 
     if (nsGlobalWindowInner::Cast(window)->ShouldResistFingerprinting(
-            RFPTarget::Unknown)) {
+            RFPTarget::MediaDevices)) {
       return;
     }
   }
@@ -789,10 +794,6 @@ void MediaDevices::SetOndevicechange(
 void MediaDevices::EventListenerAdded(nsAtom* aType) {
   DOMEventTargetHelper::EventListenerAdded(aType);
   SetupDeviceChangeListener();
-}
-
-bool MediaDevices::DeviceInformationCanBeExposed() const {
-  return mCanExposeCameraInfo || mCanExposeMicrophoneInfo;
 }
 
 JSObject* MediaDevices::WrapObject(JSContext* aCx,

@@ -10,6 +10,9 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
+  AMBrowserExtensionsImport: "resource://gre/modules/AddonManager.sys.mjs",
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+  AddonRepository: "resource://gre/modules/addons/AddonRepository.sys.mjs",
   BuiltInThemes: "resource:///modules/BuiltInThemes.sys.mjs",
   ClientID: "resource://gre/modules/ClientID.sys.mjs",
   DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
@@ -18,11 +21,6 @@ ChromeUtils.defineESModuleGetters(this, {
   ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  AddonManager: "resource://gre/modules/AddonManager.jsm",
-  AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(this, "extensionStylesheets", () => {
@@ -582,7 +580,7 @@ var DiscoveryAPI = {
   },
 
   get clientIdDiscoveryEnabled() {
-    // These prefs match Discovery.jsm for enabling clientId cookies.
+    // These prefs match Discovery.sys.mjs for enabling clientId cookies.
     return (
       Services.prefs.getBoolPref(PREF_RECOMMENDATION_ENABLED, false) &&
       Services.prefs.getBoolPref(PREF_TELEMETRY_ENABLED, false) &&
@@ -754,6 +752,8 @@ class GlobalWarnings extends MessageBarStackElement {
       this.setWarning("update-security", { action: true });
     } else if (!AddonManager.checkCompatibility) {
       this.setWarning("check-compatibility", { action: true });
+    } else if (AMBrowserExtensionsImport.canCompleteOrCancelInstalls) {
+      this.setWarning("imported-addons", { action: true });
     } else {
       this.removeWarning();
     }
@@ -801,6 +801,9 @@ class GlobalWarnings extends MessageBarStackElement {
         case "check-compatibility":
           AddonManager.checkCompatibility = true;
           break;
+        case "imported-addons":
+          AMBrowserExtensionsImport.completeInstalls();
+          break;
       }
     }
   }
@@ -814,6 +817,10 @@ class GlobalWarnings extends MessageBarStackElement {
   }
 
   onCheckUpdateSecurityChanged() {
+    this.refresh();
+  }
+
+  onBrowserExtensionsImportChanged() {
     this.refresh();
   }
 }
@@ -1576,67 +1583,6 @@ class PluginOptions extends AddonOptions {
 }
 customElements.define("plugin-options", PluginOptions);
 
-class FiveStarRating extends HTMLElement {
-  static get observedAttributes() {
-    return ["rating"];
-  }
-
-  constructor() {
-    super();
-    this.attachShadow({ mode: "open" });
-    this.shadowRoot.append(importTemplate("five-star-rating"));
-  }
-
-  set rating(v) {
-    this.setAttribute("rating", v);
-  }
-
-  get rating() {
-    let v = parseFloat(this.getAttribute("rating"), 10);
-    if (v >= 0 && v <= 5) {
-      return v;
-    }
-    return 0;
-  }
-
-  get ratingBuckets() {
-    // 0    <= x <  0.25 = empty
-    // 0.25 <= x <  0.75 = half
-    // 0.75 <= x <= 1    = full
-    // ... et cetera, until x <= 5.
-    let { rating } = this;
-    return [0, 1, 2, 3, 4].map(ratingStart => {
-      let distanceToFull = rating - ratingStart;
-      if (distanceToFull < 0.25) {
-        return "empty";
-      }
-      if (distanceToFull < 0.75) {
-        return "half";
-      }
-      return "full";
-    });
-  }
-
-  connectedCallback() {
-    this.renderRating();
-  }
-
-  attributeChangedCallback() {
-    this.renderRating();
-  }
-
-  renderRating() {
-    let starElements = this.shadowRoot.querySelectorAll(".rating-star");
-    for (let [i, part] of this.ratingBuckets.entries()) {
-      starElements[i].setAttribute("fill", part);
-    }
-    document.l10n.setAttributes(this, "five-star-rating", {
-      rating: this.rating,
-    });
-  }
-}
-customElements.define("five-star-rating", FiveStarRating);
-
 class ProxyContextMenu extends HTMLElement {
   openPopupAtScreen(...args) {
     // prettier-ignore
@@ -2236,6 +2182,23 @@ class AddonDetails extends HTMLElement {
     });
   }
 
+  updateQuarantinedDomainsUserAllowed() {
+    const { addon } = this;
+    let quarantinedDomainsUserAllowedRow = this.querySelector(
+      ".addon-detail-row-quarantined-domains"
+    );
+    if (addon.canChangeQuarantineIgnored) {
+      quarantinedDomainsUserAllowedRow.hidden = false;
+      quarantinedDomainsUserAllowedRow.nextElementSibling.hidden = false;
+      quarantinedDomainsUserAllowedRow.querySelector(
+        `[value="${addon.quarantineIgnoredByUser ? 1 : 0}"]`
+      ).checked = true;
+    } else {
+      quarantinedDomainsUserAllowedRow.hidden = true;
+      quarantinedDomainsUserAllowedRow.nextElementSibling.hidden = true;
+    }
+  }
+
   async render() {
     let { addon } = this;
     if (!addon) {
@@ -2299,6 +2262,8 @@ class AddonDetails extends HTMLElement {
       pbRow.querySelector(`[value="${isAllowed ? 1 : 0}"]`).checked = true;
     }
 
+    this.updateQuarantinedDomainsUserAllowed();
+
     // Author.
     let creatorRow = this.querySelector(".addon-detail-row-author");
     if (addon.creator) {
@@ -2352,7 +2317,7 @@ class AddonDetails extends HTMLElement {
     // Rating.
     let ratingRow = this.querySelector(".addon-detail-row-rating");
     if (addon.averageRating) {
-      ratingRow.querySelector("five-star-rating").rating = addon.averageRating;
+      ratingRow.querySelector("moz-five-star").rating = addon.averageRating;
       let reviews = ratingRow.querySelector("a");
       reviews.href = formatUTMParams(
         "addons-manager-reviews-link",
@@ -2635,34 +2600,43 @@ class AddonCard extends HTMLElement {
       this.setAddonPermission(permission, type, fname);
     } else if (e.type == "change") {
       let { name } = e.target;
-      if (name == "autoupdate") {
-        addon.applyBackgroundUpdates = e.target.value;
-      } else if (name == "private-browsing") {
-        let policy = WebExtensionPolicy.getByID(addon.id);
-        let extension = policy && policy.extension;
-
-        if (e.target.value == "1") {
-          await ExtensionPermissions.add(
-            addon.id,
-            PRIVATE_BROWSING_PERMS,
-            extension
-          );
-        } else {
-          await ExtensionPermissions.remove(
-            addon.id,
-            PRIVATE_BROWSING_PERMS,
-            extension
-          );
+      switch (name) {
+        case "autoupdate": {
+          addon.applyBackgroundUpdates = e.target.value;
+          break;
         }
-        // Reload the extension if it is already enabled. This ensures any
-        // change on the private browsing permission is properly handled.
-        if (addon.isActive) {
-          this.reloading = true;
-          // Reloading will trigger an enable and update the card.
-          addon.reload();
-        } else {
-          // Update the card if the add-on isn't active.
-          this.update();
+        case "private-browsing": {
+          let policy = WebExtensionPolicy.getByID(addon.id);
+          let extension = policy && policy.extension;
+
+          if (e.target.value == "1") {
+            await ExtensionPermissions.add(
+              addon.id,
+              PRIVATE_BROWSING_PERMS,
+              extension
+            );
+          } else {
+            await ExtensionPermissions.remove(
+              addon.id,
+              PRIVATE_BROWSING_PERMS,
+              extension
+            );
+          }
+          // Reload the extension if it is already enabled. This ensures any
+          // change on the private browsing permission is properly handled.
+          if (addon.isActive) {
+            this.reloading = true;
+            // Reloading will trigger an enable and update the card.
+            addon.reload();
+          } else {
+            // Update the card if the add-on isn't active.
+            this.update();
+          }
+          break;
+        }
+        case "quarantined-domains-user-allowed": {
+          addon.quarantineIgnoredByUser = e.target.value == "1";
+          break;
         }
       }
     } else if (e.type == "mousedown") {
@@ -2997,6 +2971,10 @@ class AddonCard extends HTMLElement {
     } else if (addon.type == "plugin" && changed.includes("userDisabled")) {
       this.update();
     }
+
+    if (this.details && changed.includes("quarantineIgnoredByUser")) {
+      this.details.updateQuarantinedDomainsUserAllowed();
+    }
   }
 
   /* Extension Permission change listener */
@@ -3136,9 +3114,9 @@ class RecommendedAddonCard extends HTMLElement {
     let hasStats = false;
     if (addon.averageRating) {
       hasStats = true;
-      card.querySelector("five-star-rating").rating = addon.averageRating;
+      card.querySelector("moz-five-star").rating = addon.averageRating;
     } else {
-      card.querySelector("five-star-rating").hidden = true;
+      card.querySelector("moz-five-star").hidden = true;
     }
 
     if (addon.dailyUsers) {

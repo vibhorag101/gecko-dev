@@ -19,11 +19,17 @@
 .card-container-header {
   display: inline-flex;
   gap: 16px;
-  width: 87%;
+  width: 100%;
   align-items: center;
   cursor: pointer;
   border-radius: 1px;
-  outline-offset: 6px;
+  outline-offset: 4px;
+  padding: 6px;
+  padding-inline-end: 0;
+}
+
+.card-container-header[withViewAll] {
+  width: 83%;
 }
 
 .card-container-header[hidden] {
@@ -33,10 +39,12 @@
 .view-all-link {
   color: var(--fxview-primary-action-background);
   float: inline-end;
-  outline-offset: 8px;
+  outline-offset: 6px;
   border-radius: 1px;
-  width: 10%;
+  width: 12%;
   text-align: end;
+  padding: 6px;
+  padding-inline-start: 0;
 }
 
 .card-container-header:focus-visible,
@@ -95,10 +103,11 @@
   display: none;
 }
 
-::slotted(h2) {
+::slotted([slot=header]) {
   margin: 0;
   font-size: 1.13em;
   font-weight: 600;
+  user-select: none;
 }
 
 .card-container-footer {
@@ -109,4 +118,14 @@
 
 ::slotted([slot=footer]) {
   text-decoration: underline;
+  padding-block: 0.5rem;
+}
+
+@media (max-width: 39rem) {
+  .card-container-header[withViewAll] {
+    width: 76%;
+  }
+  .view-all-link {
+    width: 20%;
+  }
 }

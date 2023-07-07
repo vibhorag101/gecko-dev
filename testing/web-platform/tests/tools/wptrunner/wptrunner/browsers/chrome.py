@@ -50,6 +50,7 @@ def executor_kwargs(logger, test_type, test_environment, run_info_data,
                                            **kwargs)
     executor_kwargs["close_after_done"] = True
     executor_kwargs["sanitizer_enabled"] = sanitizer_enabled
+    executor_kwargs["reuse_window"] = kwargs.get("reuse_window", False)
 
     capabilities = {
         "goog:chromeOptions": {
@@ -82,6 +83,8 @@ def executor_kwargs(logger, test_type, test_environment, run_info_data,
     # Allow WebRTC tests to call getUserMedia and getDisplayMedia.
     chrome_options["args"].append("--use-fake-device-for-media-stream")
     chrome_options["args"].append("--use-fake-ui-for-media-stream")
+    # Use a fake UI for FedCM to allow testing it.
+    chrome_options["args"].append("--use-fake-ui-for-fedcm")
     # Shorten delay for Reporting <https://w3c.github.io/reporting/>.
     chrome_options["args"].append("--short-reporting-delay")
     # Point all .test domains to localhost for Chrome

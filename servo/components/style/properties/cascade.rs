@@ -844,6 +844,10 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
             builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_FONT_FAMILY);
         }
 
+        if self.author_specified.contains(LonghandId::Color) {
+            builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_TEXT_COLOR);
+        }
+
         if self.author_specified.contains(LonghandId::LetterSpacing) {
             builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_LETTER_SPACING);
         }
@@ -907,6 +911,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
         let bits_to_copy = ComputedValueFlags::HAS_AUTHOR_SPECIFIED_BORDER_BACKGROUND |
             ComputedValueFlags::DEPENDS_ON_SELF_FONT_METRICS |
             ComputedValueFlags::DEPENDS_ON_INHERITED_FONT_METRICS |
+            ComputedValueFlags::USES_CONTAINER_UNITS |
             ComputedValueFlags::USES_VIEWPORT_UNITS;
         builder.add_flags(cached_style.flags & bits_to_copy);
 
@@ -1013,7 +1018,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
             let new_size = match info.kw {
                 specified::FontSizeKeyword::None => return,
                 _ => {
-                    self.context.for_non_inherited_property = None;
+                    self.context.for_non_inherited_property = false;
                     specified::FontSize::Keyword(info).to_computed_value(self.context)
                 },
             };

@@ -31,6 +31,9 @@ add_setup(async () => {
       ["browser.urlbar.trending.featureGate", true],
       ["browser.urlbar.trending.requireSearchMode", false],
       ["browser.urlbar.eventTelemetry.enabled", true],
+      // Bug 1775917: Disable the persisted-search-terms search tip because if
+      // not dismissed, it can cause issues with other search tests.
+      ["browser.urlbar.tipShownCount.searchTip_persist", 999],
     ],
   });
 
@@ -71,7 +74,7 @@ async function check_results({ featureEnabled = false }) {
     Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.SEARCH);
     Assert.equal(result.providerName, "SearchSuggestions");
     Assert.equal(result.payload.engine, "basic");
-    Assert.equal(result.payload.isRichSuggestion, featureEnabled);
+    Assert.equal(result.isRichSuggestion, featureEnabled);
     if (featureEnabled) {
       Assert.equal(typeof result.payload.description, "string");
       Assert.ok(result.payload.icon.startsWith("data:"));

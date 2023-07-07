@@ -25,13 +25,17 @@ const {
 } = require("resource://devtools/server/actors/watcher/session-context.js");
 
 const lazy = {};
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
-);
-ChromeUtils.defineESModuleGetters(lazy, {
-  ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
+loader.lazyGetter(lazy, "AddonManager", () => {
+  return ChromeUtils.importESModule(
+    "resource://gre/modules/AddonManager.sys.mjs",
+    { loadInDevToolsLoader: false }
+  ).AddonManager;
+});
+loader.lazyGetter(lazy, "ExtensionParent", () => {
+  return ChromeUtils.importESModule(
+    "resource://gre/modules/ExtensionParent.sys.mjs",
+    { loadInDevToolsLoader: false }
+  ).ExtensionParent;
 });
 loader.lazyRequireGetter(
   this,

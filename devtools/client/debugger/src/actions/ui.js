@@ -7,11 +7,11 @@ import {
   getPaneCollapse,
   getQuickOpenEnabled,
   getSource,
-  getSourceContent,
-  getMainThread,
+  getSourceTextContent,
   getIgnoreListSourceUrls,
   getSourceByURL,
   getBreakpointsForSource,
+  getContext,
 } from "../selectors";
 import { selectSource } from "../actions/sources/select";
 import {
@@ -198,35 +198,6 @@ export function closeConditionalPanel() {
   };
 }
 
-export function clearProjectDirectoryRoot(cx) {
-  return {
-    type: "SET_PROJECT_DIRECTORY_ROOT",
-    cx,
-    url: "",
-    name: "",
-  };
-}
-
-export function setProjectDirectoryRoot(cx, newRoot, newName) {
-  return ({ dispatch, getState }) => {
-    // If the new project root is against the top level thread,
-    // replace its thread ID with "top-level", so that later,
-    // getDirectoryForUniquePath could match the project root,
-    // even after a page reload where the new top level thread actor ID
-    // will be different.
-    const mainThread = getMainThread(getState());
-    if (mainThread && newRoot.startsWith(mainThread.actor)) {
-      newRoot = newRoot.replace(mainThread.actor, "top-level");
-    }
-    dispatch({
-      type: "SET_PROJECT_DIRECTORY_ROOT",
-      cx,
-      url: newRoot,
-      name: newName,
-    });
-  };
-}
-
 export function updateViewport() {
   return {
     type: "SET_VIEWPORT",
@@ -248,7 +219,7 @@ export function setSearchOptions(searchKey, searchOptions) {
 
 export function copyToClipboard(location) {
   return ({ dispatch, getState }) => {
-    const content = getSourceContent(getState(), location);
+    const content = getSourceTextContent(getState(), location);
     if (content && isFulfilled(content) && content.value.type === "text") {
       copyToTheClipboard(content.value.value);
     }
@@ -270,9 +241,10 @@ export function setHideOrShowIgnoredSources(shouldHide) {
   };
 }
 
-export function toggleSourceMapIgnoreList(cx, shouldEnable) {
+export function toggleSourceMapIgnoreList(shouldEnable) {
   return async thunkArgs => {
     const { dispatch, getState } = thunkArgs;
+    const cx = getContext(getState());
     const ignoreListSourceUrls = getIgnoreListSourceUrls(getState());
     // Blackbox the source actors on the server
     for (const url of ignoreListSourceUrls) {

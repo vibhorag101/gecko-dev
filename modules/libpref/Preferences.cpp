@@ -2795,11 +2795,6 @@ nsPrefBranch::UnlockPref(const char* aPrefName) {
 }
 
 NS_IMETHODIMP
-nsPrefBranch::ResetBranch(const char* aStartingAt) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
 nsPrefBranch::DeleteBranch(const char* aStartingAt) {
   ENSURE_PARENT_PROCESS("DeleteBranch", aStartingAt);
   NS_ENSURE_ARG(aStartingAt);
@@ -6128,6 +6123,7 @@ static const PrefListEntry sDynamicPrefOverrideList[]{
     PREF_LIST_ENTRY("logging.config.LOG_FILE"),
     PREF_LIST_ENTRY("media.audio_loopback_dev"),
     PREF_LIST_ENTRY("media.decoder-doctor."),
+    PREF_LIST_ENTRY("media.cubeb.backend"),
     PREF_LIST_ENTRY("media.cubeb.output_device"),
     PREF_LIST_ENTRY("media.getusermedia.fake-camera-name"),
     PREF_LIST_ENTRY("media.hls.server.url"),
@@ -6142,10 +6138,12 @@ static const PrefListEntry sDynamicPrefOverrideList[]{
     PREF_LIST_ENTRY("network.security.ports.banned"),
     PREF_LIST_ENTRY("nimbus.syncdatastore."),
     PREF_LIST_ENTRY("pdfjs."),
+    PREF_LIST_ENTRY("plugins.force.wmode"),
     PREF_LIST_ENTRY("print.printer_"),
     PREF_LIST_ENTRY("print_printer"),
     PREF_LIST_ENTRY("places.interactions.customBlocklist"),
     PREF_LIST_ENTRY("remote.log.level"),
+    PREF_LIST_ENTRY("services.settings.loglevel"),
     PREF_LIST_ENTRY(
         "services.settings.preview_enabled"),  // This is really a boolean
                                                // dynamic pref, but one Nightly

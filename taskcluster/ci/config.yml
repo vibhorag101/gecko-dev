@@ -59,6 +59,7 @@ treeherder:
         'M-headless-spi-nw': 'Headless Mochitests with fission and socketprocess networking.'
         'M-headless-spi-nw-nofis': 'Headless Mochitests with fission and socketprocess networking without fission enabled.'
         'M-http3': 'Mochitests with Http/3 server'
+        'M-http2': 'Mochitests with Http/2 server'
         'M-aab': 'Mochitests with AAB test_runner.'
         'M-aab-nofis': 'Mochitests with AAB test_runner without fission enabled.'
         'M-1proc': 'Mochitests without e10s or fission'
@@ -159,6 +160,7 @@ treeherder:
         'Deb9': 'Packages for Debian 9'
         'Deb10': 'Packages for Debian 10'
         'Deb11': 'Packages for Debian 11'
+        'Deb12': 'Packages for Debian 12'
         'Ub18': 'Packages for Ubuntu 18.04'
         'Ub20': 'Packages for Ubuntu 20.04'
         'I': 'Docker Image Builds'
@@ -183,6 +185,7 @@ treeherder:
         'langpack': 'Langpack sigatures and uploads'
         'TPS': 'Sync tests'
         'UV': 'Update verify'
+        'UVnext': 'Update verify for esr-next'
         'pydep': 'python dependency update'
         'WR': 'WebRender standalone'
         'Wgpu': 'WebGPU standalone'
@@ -253,6 +256,11 @@ release-promotion:
         - 'devedition'
         - 'fennec'
         - 'firefox'
+    rebuild-kinds:
+        - docker-image
+        - fetch
+        - packages
+        - toolchain
     flavors:
         promote_devedition:
             product: devedition
@@ -378,8 +386,8 @@ merge-automation:
             replacements: []
             merge-old-head: false
             end-tag: "FIREFOX_ESR_{major_version}_BASE"
-            to-repo: 'https://hg.mozilla.org/releases/mozilla-esr102'
-            to-branch: 'esr102'
+            to-repo: 'https://hg.mozilla.org/releases/mozilla-esr115'
+            to-branch: 'esr115'
         bump-central:
             fetch-version-from: "browser/config/version.txt"
             version-files:
@@ -413,6 +421,19 @@ merge-automation:
             merge-old-head: false
             to-repo: 'https://hg.mozilla.org/releases/mozilla-esr102'
             to-branch: 'esr102'
+        bump-esr115:
+            fetch-version-from: "browser/config/version.txt"
+            version-files:
+                - filename: "config/milestone.txt"
+                  version-bump: "minor"
+                - filename: "browser/config/version.txt"
+                  version-bump: "minor"
+                - filename: "browser/config/version_display.txt"
+                  version-bump: "minor"
+            replacements: []
+            merge-old-head: false
+            to-repo: 'https://hg.mozilla.org/releases/mozilla-esr115'
+            to-branch: 'esr115'
 
 scriptworker:
     # See additional configuration in taskcluster/gecko_taskgraph/util/scriptworker.py

@@ -9,8 +9,8 @@ const { TelemetryTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryTestUtils.sys.mjs"
 );
 
-let { AddonManagerPrivate } = ChromeUtils.import(
-  "resource://gre/modules/AddonManager.jsm"
+let { AddonManagerPrivate } = ChromeUtils.importESModule(
+  "resource://gre/modules/AddonManager.sys.mjs"
 );
 
 var pathParts = gTestPath.split("/");
@@ -1640,8 +1640,8 @@ function loadTestSubscript(filePath) {
 }
 
 function cleanupPendingNotifications() {
-  const { ExtensionsUI } = ChromeUtils.import(
-    "resource:///modules/ExtensionsUI.jsm"
+  const { ExtensionsUI } = ChromeUtils.importESModule(
+    "resource:///modules/ExtensionsUI.sys.mjs"
   );
   info("Cleanup any pending notification before exiting the test");
   const keys = ChromeUtils.nondeterministicGetWeakSetKeys(

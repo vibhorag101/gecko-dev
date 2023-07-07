@@ -8,20 +8,13 @@ var { ExtensionParent } = ChromeUtils.importESModule(
   "resource://gre/modules/ExtensionParent.sys.mjs"
 );
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "ExtensionControlledPopup",
-  "resource:///modules/ExtensionControlledPopup.jsm"
-);
 ChromeUtils.defineESModuleGetters(this, {
+  AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
+  ExtensionControlledPopup:
+    "resource:///modules/ExtensionControlledPopup.sys.mjs",
   ExtensionSettingsStore:
     "resource://gre/modules/ExtensionSettingsStore.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "AboutNewTab",
-  "resource:///modules/AboutNewTab.jsm"
-);
 
 const STORE_TYPE = "url_overrides";
 const NEW_TAB_SETTING_NAME = "newTabURL";
@@ -38,7 +31,6 @@ XPCOMUtils.defineLazyGetter(this, "newTabPopup", () => {
     settingKey: NEW_TAB_SETTING_NAME,
     descriptionId: "extension-new-tab-notification-description",
     descriptionMessageId: "newTabControlled.message2",
-    learnMoreMessageId: "newTabControlled.learnMore",
     learnMoreLink: "extension-home",
     preferencesLocation: "home-newtabOverride",
     preferencesEntrypoint: "addon-manage-newtab-override",

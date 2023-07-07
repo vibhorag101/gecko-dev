@@ -919,10 +919,7 @@ add_task(async function test_helpers_getFxaStatus_allowed_signedInUser() {
 
     // These properties are filtered and should not
     // be returned to the requester.
-    Assert.equal(false, "kSync" in signedInUser);
-    Assert.equal(false, "kXCS" in signedInUser);
-    Assert.equal(false, "kExtSync" in signedInUser);
-    Assert.equal(false, "kExtKbHash" in signedInUser);
+    Assert.equal(false, "scopedKeys" in signedInUser);
   });
 });
 

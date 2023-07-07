@@ -78,6 +78,7 @@ crashtest:
             default:
                 by-test-platform:
                     android.*: []
+                    .*wayland.*: []
                     default: built-projects
     max-run-time: 3600
     tier:
@@ -140,6 +141,7 @@ jsreftest:
             default:
                 by-test-platform:
                     android.*/.*: []
+                    .*wayland.*: []
                     default: built-projects
     virtualization: virtual
 
@@ -185,7 +187,6 @@ reftest:
                     linux1804-64(-asan|-tsan)-qr/opt: built-projects
                     macosx101.*64-qr/debug: built-projects
                     windows.*-asan-qr/opt: built-projects
-                    windows7-32(?:-shippable)?-qr/opt: built-projects
                     default: []
             no-fission:
                 by-test-platform:
@@ -201,6 +202,7 @@ reftest:
             default:
                 by-test-platform:
                     android.*/.*: []
+                    .*wayland.*: []
                     linux.*asan/opt: []
                     default: built-projects
     max-run-time:

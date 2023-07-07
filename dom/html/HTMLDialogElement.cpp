@@ -78,15 +78,11 @@ void HTMLDialogElement::Show(ErrorResult& aError) {
         "Cannot call show() on an open modal dialog.");
   }
 
-  if (IsPopoverOpen()) {
-    return aError.ThrowInvalidStateError(
-        "Dialog element is already an open popover.");
-  }
-
   SetOpen(true, IgnoreErrors());
 
   StorePreviouslyFocusedElement();
 
+  OwnerDoc()->HideAllPopoversWithoutRunningScript();
   FocusDialog();
 }
 
@@ -148,6 +144,7 @@ void HTMLDialogElement::ShowModal(ErrorResult& aError) {
 
   StorePreviouslyFocusedElement();
 
+  OwnerDoc()->HideAllPopoversWithoutRunningScript();
   FocusDialog();
 
   aError.SuppressException();
@@ -161,8 +158,6 @@ void HTMLDialogElement::FocusDialog() {
   if (IsInComposedDoc()) {
     doc->FlushPendingNotifications(FlushType::Frames);
   }
-
-  doc->HideAllPopoversWithoutRunningScript();
 
   RefPtr<Element> control = GetFocusDelegate(false /* aWithMouse */);
 

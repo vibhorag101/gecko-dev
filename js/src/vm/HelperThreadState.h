@@ -55,9 +55,6 @@ enum class ParseTaskKind {
 
   // The output is CompilationStencil for script/stencil.
   StencilDecode,
-
-  // The output is an array of CompilationStencil.
-  MultiStencilsDecode,
 };
 
 namespace wasm {
@@ -333,9 +330,11 @@ class GlobalHelperThreadState {
 
   GCParallelTaskList& gcParallelWorklist() { return gcParallelWorklist_; }
 
-  size_t getGCParallelThreadCount() const { return gcParallelThreadCount; }
+  size_t getGCParallelThreadCount(const AutoLockHelperThreadState& lock) const {
+    return gcParallelThreadCount;
+  }
   void setGCParallelThreadCount(size_t count,
-                                const AutoLockHelperThreadState&) {
+                                const AutoLockHelperThreadState& lock) {
     MOZ_ASSERT(count >= 1);
     MOZ_ASSERT(count <= threadCount);
     gcParallelThreadCount = count;
@@ -399,10 +398,6 @@ class GlobalHelperThreadState {
   UniquePtr<ParseTask> finishParseTaskCommon(JSContext* cx,
                                              JS::OffThreadToken* token);
 
-  bool finishMultiParseTask(JSContext* cx, ParseTaskKind kind,
-                            JS::OffThreadToken* token,
-                            mozilla::Vector<RefPtr<JS::Stencil>>* stencils);
-
  public:
   void cancelParseTask(JSRuntime* rt, JS::OffThreadToken* token);
   void destroyParseTask(JSRuntime* rt, ParseTask* parseTask);
@@ -412,9 +407,6 @@ class GlobalHelperThreadState {
   already_AddRefed<frontend::CompilationStencil> finishStencilTask(
       JSContext* cx, JS::OffThreadToken* token,
       JS::InstantiationStorage* storage);
-  bool finishMultiStencilsDecodeTask(
-      JSContext* cx, JS::OffThreadToken* token,
-      mozilla::Vector<RefPtr<JS::Stencil>>* stencils);
 
   bool hasActiveThreads(const AutoLockHelperThreadState&);
   bool canStartTasks(const AutoLockHelperThreadState& locked);
@@ -515,10 +507,6 @@ struct ParseTask : public mozilla::LinkedListElement<ParseTask>,
   // Callback invoked off thread when the parse finishes.
   JS::OffThreadCompileCallback callback;
   void* callbackData;
-
-  // For the multi-decode stencil case, holds onto the set of stencils produced
-  // offthread
-  mozilla::Vector<RefPtr<JS::Stencil>> stencils;
 
   // The input of the compilation.
   JS::CompilationStorage compileStorage_;

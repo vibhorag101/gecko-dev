@@ -80,15 +80,11 @@
 
   window._gBrowser = {
     init() {
-      ChromeUtils.defineModuleGetter(
-        this,
-        "AsyncTabSwitcher",
-        "resource:///modules/AsyncTabSwitcher.jsm"
-      );
       ChromeUtils.defineESModuleGetters(this, {
+        AsyncTabSwitcher: "resource:///modules/AsyncTabSwitcher.sys.mjs",
+        PictureInPicture: "resource://gre/modules/PictureInPicture.sys.mjs",
         UrlbarProviderOpenTabs:
           "resource:///modules/UrlbarProviderOpenTabs.sys.mjs",
-        PictureInPicture: "resource://gre/modules/PictureInPicture.sys.mjs",
       });
       XPCOMUtils.defineLazyServiceGetters(this, {
         MacSharingService: [
@@ -104,11 +100,9 @@
       });
 
       if (AppConstants.MOZ_CRASHREPORTER) {
-        ChromeUtils.defineModuleGetter(
-          this,
-          "TabCrashHandler",
-          "resource:///modules/ContentCrashHandlers.jsm"
-        );
+        ChromeUtils.defineESModuleGetters(this, {
+          TabCrashHandler: "resource:///modules/ContentCrashHandlers.sys.mjs",
+        });
       }
 
       Services.obs.addObserver(this, "contextual-identity-updated");
@@ -621,10 +615,6 @@
       return this.selectedBrowser.sessionHistory;
     },
 
-    get markupDocumentViewer() {
-      return this.selectedBrowser.markupDocumentViewer;
-    },
-
     get contentDocument() {
       return this.selectedBrowser.contentDocument;
     },
@@ -754,7 +744,6 @@
     _updateTabBarForPinnedTabs() {
       this.tabContainer._unlockTabSizing();
       this.tabContainer._positionPinnedTabs();
-      this.tabContainer._setPositionalAttributes();
       this.tabContainer._updateCloseButtons();
     },
 
@@ -1192,6 +1181,11 @@
         newBrowser.docShellIsActive = !document.hidden;
       }
 
+      if (gURLBar) {
+        oldBrowser._urlbarSelectionStart = gURLBar.selectionStart;
+        oldBrowser._urlbarSelectionEnd = gURLBar.selectionEnd;
+      }
+
       this._selectedBrowser = newBrowser;
       this._selectedTab = newTab;
       this.showTab(newTab);
@@ -1376,6 +1370,14 @@
         if (!gMultiProcessBrowser) {
           this._adjustFocusBeforeTabSwitch(oldTab, newTab);
           this._adjustFocusAfterTabSwitch(newTab);
+        }
+
+        // Bug 1781806 - A forced update can indicate the tab was already
+        // selected. To ensure the internal state of the Urlbar is kept in
+        // sync, notify it as if focus changed. Alternatively, if there is no
+        // force update but the load context is not using remote tabs, there
+        // can be a focus change due to the _adjustFocus above.
+        if (aForceUpdate || !gMultiProcessBrowser) {
           gURLBar.afterTabSwitchFocusChange();
         }
       }
@@ -1390,8 +1392,6 @@
       newTab.setAttribute("touchdownstartsdrag", "true");
 
       if (!gMultiProcessBrowser) {
-        this.tabContainer._setPositionalAttributes();
-
         document.commandDispatcher.unlock();
 
         let event = new CustomEvent("TabSwitchDone", {
@@ -1415,6 +1415,10 @@
       let newBrowser = newTab.linkedBrowser;
 
       oldBrowser._urlbarFocused = gURLBar && gURLBar.focused;
+
+      if (this._asyncTabSwitching) {
+        newBrowser._userTypedValueAtBeforeTabSwitch = newBrowser.userTypedValue;
+      }
 
       if (this.isFindBarInitialized(oldTab)) {
         let findBar = this.getCachedFindBar(oldTab);
@@ -1474,14 +1478,6 @@
       // In full screen mode, only bother making the location bar visible
       // if the tab is a blank one.
       if (newBrowser._urlbarFocused && gURLBar) {
-        // If the user happened to type into the URL bar for this browser
-        // by the time we got here, focusing will cause the text to be
-        // selected which could cause them to overwrite what they've
-        // already typed in.
-        if (gURLBar.focused && newBrowser.userTypedValue) {
-          return;
-        }
-
         let selectURL = () => {
           if (this._asyncTabSwitching) {
             // Set _awaitingSetURI flag to suppress popup notification
@@ -1498,15 +1494,38 @@
             gURLBar.inputField.addEventListener(
               "SetURI",
               () => {
-                if (currentActiveElement === document.activeElement) {
-                  gURLBar.select();
-                }
                 delete newBrowser._awaitingSetURI;
+
+                // If the user happened to type into the URL bar for this browser
+                // by the time we got here, focusing will cause the text to be
+                // selected which could cause them to overwrite what they've
+                // already typed in.
+                let userTypedValueAtBeforeTabSwitch =
+                  newBrowser._userTypedValueAtBeforeTabSwitch;
+                delete newBrowser._userTypedValueAtBeforeTabSwitch;
+                if (
+                  newBrowser.userTypedValue &&
+                  newBrowser.userTypedValue != userTypedValueAtBeforeTabSwitch
+                ) {
+                  return;
+                }
+
+                if (currentActiveElement != document.activeElement) {
+                  return;
+                }
+
+                gURLBar.setSelectionRange(
+                  newBrowser._urlbarSelectionStart,
+                  newBrowser._urlbarSelectionEnd
+                );
               },
               { once: true }
             );
           } else {
-            gURLBar.select();
+            gURLBar.setSelectionRange(
+              newBrowser._urlbarSelectionStart,
+              newBrowser._urlbarSelectionEnd
+            );
           }
         };
 
@@ -3253,7 +3272,6 @@
 
       if (tabs.length > 1 || !tabs[0].selected) {
         this._updateTabsAfterInsert();
-        this.tabContainer._setPositionalAttributes();
         TabBarVisibility.update();
 
         for (let tab of tabs) {
@@ -3479,7 +3497,6 @@
       if (pinned) {
         this._updateTabBarForPinnedTabs();
       }
-      this.tabContainer._setPositionalAttributes();
 
       TabBarVisibility.update();
     },
@@ -4211,14 +4228,6 @@
       // We are no longer the primary content area.
       browser.removeAttribute("primary");
 
-      // Remove this tab as the owner of any other tabs, since it's going away.
-      for (let tab of this.tabs) {
-        if ("owner" in tab && tab.owner == aTab) {
-          // |tab| is a child of the tab we're removing, make it an orphan
-          tab.owner = null;
-        }
-      }
-
       return true;
     },
 
@@ -4312,7 +4321,6 @@
 
       // update tab positional properties and attributes
       this.selectedTab._selected = true;
-      this.tabContainer._setPositionalAttributes();
 
       // Removing the panel requires fixing up selectedPanel immediately
       // (see below), which would be hindered by the potentially expensive
@@ -4542,6 +4550,10 @@
           ourBrowser.mute();
         }
         modifiedAttrs.push("muted");
+      }
+      if (aOtherTab.hasAttribute("undiscardable")) {
+        aOurTab.setAttribute("undiscardable", "true");
+        modifiedAttrs.push("undiscardable");
       }
       if (aOtherTab.hasAttribute("soundplaying")) {
         aOurTab.setAttribute("soundplaying", "true");
@@ -4827,8 +4839,6 @@
       this.tabContainer._updateCloseButtons();
       this.tabContainer._updateHiddenTabsStatus();
 
-      this.tabContainer._setPositionalAttributes();
-
       let event = document.createEvent("Events");
       event.initEvent("TabShow", true, false);
       aTab.dispatchEvent(event);
@@ -4851,8 +4861,6 @@
 
       this.tabContainer._updateCloseButtons();
       this.tabContainer._updateHiddenTabsStatus();
-
-      this.tabContainer._setPositionalAttributes();
 
       // Splice this tab out of any lines of succession before any events are
       // dispatched.
@@ -4910,7 +4918,6 @@
 
       // Play the tab closing animation to give immediate feedback while
       // waiting for the new window to appear.
-      // content area when the docshells are swapped.
       if (!gReduceMotion) {
         aTab.style.maxWidth = ""; // ensure that fade-out transition happens
         aTab.removeAttribute("fadein");
@@ -5057,8 +5064,6 @@
       if (aTab.pinned) {
         this.tabContainer._positionPinnedTabs();
       }
-
-      this.tabContainer._setPositionalAttributes();
 
       var evt = document.createEvent("UIEvents");
       evt.initUIEvent("TabMove", true, false, window, oldPosition);
@@ -5420,9 +5425,6 @@
         this._multiSelectChangeSelected = false;
         this._multiSelectChangeAdditions.clear();
         this._multiSelectChangeRemovals.clear();
-        if (noticeable) {
-          this.tabContainer._setPositionalAttributes();
-        }
         this.dispatchEvent(
           new CustomEvent("TabMultiSelect", { bubbles: true })
         );
@@ -7500,7 +7502,7 @@ var TabContextMenu = {
 
     // Session store
     document.getElementById("context_undoCloseTab").disabled =
-      SessionStore.getClosedTabCountForWindow(window) == 0;
+      SessionStore.getClosedTabCount() == 0;
 
     // Show/hide fullscreen context menu items and set the
     // autohide item's checked state to mirror the autohide pref.

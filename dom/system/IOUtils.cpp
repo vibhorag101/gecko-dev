@@ -2682,14 +2682,22 @@ JSString* IOUtils::JsBuffer::IntoString(JSContext* aCx, JsBuffer aBuffer) {
     return JS_NewLatin1String(aCx, std::move(asLatin1), aBuffer.mLength);
   }
 
+  const char* ptr = aBuffer.mBuffer.get();
+  size_t length = aBuffer.mLength;
+
+  // Strip off a leading UTF-8 byte order marker (BOM) if found.
+  if (length >= 3 && Substring(ptr, 3) == "\xEF\xBB\xBF"_ns) {
+    ptr += 3;
+    length -= 3;
+  }
+
   // If the string is encodable as Latin1, we need to deflate the string to a
-  // Latin1 string to accoutn for UTF-8 characters that are encoded as more than
+  // Latin1 string to account for UTF-8 characters that are encoded as more than
   // a single byte.
   //
   // Otherwise, the string contains characters outside Latin1 so we have to
   // inflate to UTF-16.
-  return JS_NewStringCopyUTF8N(
-      aCx, JS::UTF8Chars(aBuffer.mBuffer.get(), aBuffer.mLength));
+  return JS_NewStringCopyUTF8N(aCx, JS::UTF8Chars(ptr, length));
 }
 
 /* static */
@@ -2700,20 +2708,15 @@ JSObject* IOUtils::JsBuffer::IntoUint8Array(JSContext* aCx, JsBuffer aBuffer) {
     return JS_NewUint8Array(aCx, 0);
   }
 
-  char* rawBuffer = aBuffer.mBuffer.release();
-  MOZ_RELEASE_ASSERT(rawBuffer);
+  MOZ_RELEASE_ASSERT(aBuffer.mBuffer);
   JS::Rooted<JSObject*> arrayBuffer(
       aCx, JS::NewArrayBufferWithContents(aCx, aBuffer.mLength,
-                                          reinterpret_cast<void*>(rawBuffer)));
+                                          std::move(aBuffer.mBuffer)));
 
   if (!arrayBuffer) {
-    // The array buffer does not take ownership of the data pointer unless
-    // creation succeeds. We are still on the hook to free it.
-    //
     // aBuffer will be destructed at end of scope, but its destructor does not
     // take into account |mCapacity| or |mLength|, so it is OK for them to be
     // non-zero here with a null |mBuffer|.
-    js_free(rawBuffer);
     return nullptr;
   }
 

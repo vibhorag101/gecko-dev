@@ -16,8 +16,10 @@ use crate::rule_tree::StrongRuleNode;
 use crate::selector_parser::{PseudoElement, SelectorImpl};
 use crate::stylist::RuleInclusion;
 use log::Level::Trace;
-use selectors::matching::{MatchingContext, NeedsSelectorFlags};
-use selectors::matching::{MatchingMode, VisitedHandlingMode};
+use selectors::matching::{
+    IgnoreNthChildForInvalidation, MatchingContext, MatchingMode, NeedsSelectorFlags,
+    RelativeSelectorMatchingState, VisitedHandlingMode,
+};
 use servo_arc::Arc;
 
 /// Whether pseudo-elements should be resolved or not.
@@ -471,6 +473,7 @@ where
             visited_handling,
             self.context.shared.quirks_mode(),
             NeedsSelectorFlags::Yes,
+            IgnoreNthChildForInvalidation::No,
         );
 
         let stylist = &self.context.shared.stylist;
@@ -503,16 +506,24 @@ where
                 }
             }
         }
-
-        if matching_context.considered_relative_selector {
-            // This is a bit awkward - ideally, the flag is set directly where `considered_relative_selector`
-            // is; however, in that context, the implementation detail of `extra_data` is not visible, so
-            // it's done here. A trait for manipulating the flags is an option, but not worth it for a single flag.
-            matching_context
-                .extra_data
-                .cascade_input_flags
-                .insert(ComputedValueFlags::CONSIDERED_RELATIVE_SELECTOR);
-        }
+        // This is a bit awkward - ideally, the flag is set directly where `considered_relative_selector`
+        // is; however, in that context, the implementation detail of `extra_data` is not visible, so
+        // it's done here. A trait for manipulating the flags is an option, but not worth it for a single flag.
+        match matching_context.considered_relative_selector {
+            RelativeSelectorMatchingState::None => (),
+            RelativeSelectorMatchingState::Considered => {
+                matching_context
+                    .extra_data
+                    .cascade_input_flags
+                    .insert(ComputedValueFlags::CONSIDERED_RELATIVE_SELECTOR);
+            },
+            RelativeSelectorMatchingState::ConsideredAnchor => {
+                matching_context.extra_data.cascade_input_flags.insert(
+                    ComputedValueFlags::ANCHORS_RELATIVE_SELECTOR |
+                        ComputedValueFlags::CONSIDERED_RELATIVE_SELECTOR,
+                );
+            },
+        };
 
         MatchingResults {
             rule_node,
@@ -557,6 +568,7 @@ where
             visited_handling,
             self.context.shared.quirks_mode(),
             NeedsSelectorFlags::Yes,
+            IgnoreNthChildForInvalidation::No,
         );
         matching_context.extra_data.originating_element_style = Some(originating_element_style);
 

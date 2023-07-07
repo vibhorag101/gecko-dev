@@ -37,6 +37,10 @@ export class ContentDelegateChild extends GeckoViewActorChild {
 
     switch (aEvent.type) {
       case "contextmenu": {
+        if (aEvent.defaultPrevented) {
+          return;
+        }
+
         function nearestParentAttribute(aNode, aAttribute) {
           while (
             aNode &&
@@ -71,7 +75,7 @@ export class ContentDelegateChild extends GeckoViewActorChild {
         let elementSrc = (isImage || isMedia) && (node.currentSrc || node.src);
         if (elementSrc) {
           const isBlob = elementSrc.startsWith("blob:");
-          if (isBlob && !URL.isValidURL(elementSrc)) {
+          if (isBlob && !URL.isValidObjectURL(elementSrc)) {
             elementSrc = null;
           }
         }

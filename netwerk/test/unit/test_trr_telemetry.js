@@ -15,7 +15,6 @@ const { TelemetryTestUtils } = ChromeUtils.importESModule(
 
 function setup() {
   h2Port = trr_test_setup();
-  runningODoHTests = false;
 }
 
 let TRR_OK = 1;
@@ -44,6 +43,13 @@ async function trrLookup(mode, rolloutMode) {
   if (mode == 0) {
     expectedKey = "(other)";
   }
+
+  let snapshot = hist.snapshot();
+  await TestUtils.waitForCondition(() => {
+    snapshot = hist.snapshot();
+    info("snapshot:" + JSON.stringify(snapshot));
+    return snapshot;
+  });
   TelemetryTestUtils.assertKeyedHistogramValue(hist, expectedKey, TRR_OK, 1);
 }
 

@@ -287,8 +287,11 @@ const AVAILABLE_INJECTIONS = [
       matches: [
         "*://*.live.com/*",
         "*://*.office.com/*",
-        "*://*.sharepoint.com/*",
         "*://*.office365.com/*",
+        "*://*.office365.us/*",
+        "*://*.outlook.cn/*",
+        "*://*.outlook.com/*",
+        "*://*.sharepoint.com/*",
       ],
       js: [
         {
@@ -356,7 +359,6 @@ const AVAILABLE_INJECTIONS = [
     bug: "1724764",
     contentScripts: {
       matches: [
-        "*://*.amextravel.com/*", // 1724764
         "*://*.edupage.org/*", // 1804477 and 1800118
       ],
       js: [
@@ -641,7 +643,7 @@ const AVAILABLE_INJECTIONS = [
     domain: "www.samsung.com",
     bug: "1799968",
     contentScripts: {
-      matches: ["*://www.samsung.com/*/watches/*/*"],
+      matches: ["*://www.samsung.com/*"],
       js: [
         {
           file: "injections/js/bug1799968-www.samsung.com-appVersion-linux-fix.js",
@@ -692,20 +694,6 @@ const AVAILABLE_INJECTIONS = [
     },
   },
   {
-    id: "bug1803976",
-    platform: "desktop",
-    domain: "www.youtube.com",
-    bug: "1803976",
-    contentScripts: {
-      matches: ["*://www.youtube.com/*"],
-      js: [
-        {
-          file: "injections/js/bug1803976-www.youtube.com-performance-now-precision.js",
-        },
-      ],
-    },
-  },
-  {
     id: "bug1448747",
     platform: "android",
     domain: "FastClick breakage",
@@ -721,7 +709,6 @@ const AVAILABLE_INJECTIONS = [
         "*://bathpublishing.com/*", // 100145
         "*://dylantalkstone.com/*", // 101356
         "*://renewd.com.au/*", // 104998
-        "*://gofreeconcepts.de/*", // 105534
         "*://*.lamudi.co.id/*", // 106767
         "*://*.thehawksmoor.com/*", // 107549
         "*://weaversofireland.com/*", // 116816
@@ -746,7 +733,6 @@ const AVAILABLE_INJECTIONS = [
     contentScripts: {
       matches: [
         "*://*.chatiw.com/*", // 5544
-        "*://*.marksandspencer.com/*", // 101811
         "*://*.wellcare.com/*", // 116595
       ],
       js: [
@@ -785,20 +771,6 @@ const AVAILABLE_INJECTIONS = [
     },
   },
   {
-    id: "bug1819678",
-    platform: "android",
-    domain: "cnki.net",
-    bug: "1819678",
-    contentScripts: {
-      matches: ["*://*.cnki.net/*"],
-      js: [
-        {
-          file: "injections/js/bug1819678-cnki.net-undisable-search-field.js",
-        },
-      ],
-    },
-  },
-  {
     id: "bug1827678-webc77727",
     platform: "android",
     domain: "free4talk.com",
@@ -808,20 +780,6 @@ const AVAILABLE_INJECTIONS = [
       js: [
         {
           file: "injections/js/bug1819678-free4talk.com-window-chrome-shim.js",
-        },
-      ],
-    },
-  },
-  {
-    id: "bug1827678-85474",
-    platform: "desktop",
-    domain: "elal.com",
-    bug: "1827678",
-    contentScripts: {
-      matches: ["*://*.elal.com/*"],
-      css: [
-        {
-          file: "injections/css/bug1819678-elal.com-unsupported-banner.css",
         },
       ],
     },
@@ -1008,6 +966,48 @@ const AVAILABLE_INJECTIONS = [
       js: [
         {
           file: "injections/js/bug1831007-nintendo-window-OnetrustActiveGroups.js",
+        },
+      ],
+    },
+  },
+  {
+    id: "bug1836157",
+    platform: "android",
+    domain: "thai-masszazs.net",
+    bug: "1836157",
+    contentScripts: {
+      matches: ["*://*.thai-masszazs.net/*"],
+      js: [
+        {
+          file: "injections/js/bug1836157-thai-masszazs-niceScroll-disable.js",
+        },
+      ],
+    },
+  },
+  {
+    id: "bug1836103",
+    platform: "all",
+    domain: "autostar-novoross.ru",
+    bug: "1836103",
+    contentScripts: {
+      matches: ["*://autostar-novoross.ru/*"],
+      css: [
+        {
+          file: "injections/css/bug1836103-autostar-novoross.ru-make-map-taller.css",
+        },
+      ],
+    },
+  },
+  {
+    id: "bug1836105",
+    platform: "all",
+    domain: "cnn.com",
+    bug: "1836105",
+    contentScripts: {
+      matches: ["*://*.cnn.com/*"],
+      css: [
+        {
+          file: "injections/css/bug1836105-cnn.com-fix-blank-pages-when-printing.css",
         },
       ],
     },

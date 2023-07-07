@@ -3,14 +3,12 @@
 "use strict";
 
 // Load lazy so we create the app info first.
-ChromeUtils.defineModuleGetter(
-  this,
-  "PageActions",
-  "resource:///modules/PageActions.jsm"
-);
+ChromeUtils.defineESModuleGetters(this, {
+  PageActions: "resource:///modules/PageActions.sys.mjs",
+});
 
-const { AddonTestUtils } = ChromeUtils.import(
-  "resource://testing-common/AddonTestUtils.jsm"
+const { AddonTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/AddonTestUtils.sys.mjs"
 );
 
 const { createAppInfo, promiseShutdownManager, promiseStartupManager } =
@@ -21,8 +19,8 @@ AddonTestUtils.overrideCertDB();
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "58");
 
-// This is copied and pasted from ExtensionPopups.jsm.  It's used as the
-// PageActions action ID.  See ext-pageAction.js.
+// This is copied and pasted from ext-browser.js and used in ext-pageAction.js.
+// It's used as the PageActions action ID.
 function makeWidgetId(id) {
   id = id.toLowerCase();
   // FIXME: This allows for collisions.

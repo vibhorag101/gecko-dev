@@ -172,7 +172,6 @@ class XPCShellTestThread(Thread):
         self.testingModulesDir = kwargs.get("testingModulesDir")
         self.debuggerInfo = kwargs.get("debuggerInfo")
         self.jsDebuggerInfo = kwargs.get("jsDebuggerInfo")
-        self.httpdJSPath = kwargs.get("httpdJSPath")
         self.headJSPath = kwargs.get("headJSPath")
         self.testharnessdir = kwargs.get("testharnessdir")
         self.profileName = kwargs.get("profileName")
@@ -1120,7 +1119,7 @@ class XPCShellTests(object):
 
     def setAbsPath(self):
         """
-        Set the absolute path for xpcshell, httpdjspath and xrepath. These 3 variables
+        Set the absolute path for xpcshell and xrepath. These 3 variables
         depend on input from the command line and we need to allow for absolute paths.
         This function is overloaded for a remote solution as os.path* won't work remotely.
         """
@@ -1145,10 +1144,6 @@ class XPCShellTests(object):
                     self.xrePath = appBundlePath
         else:
             self.xrePath = os.path.abspath(self.xrePath)
-
-        # httpd.js belongs in xrePath/components, which is Contents/Resources on mac
-        self.httpdJSPath = os.path.join(self.xrePath, "components", "httpd.js")
-        self.httpdJSPath = self.httpdJSPath.replace("\\", "/")
 
         if self.mozInfo is None:
             self.mozInfo = os.path.join(self.testharnessdir, "mozinfo.json")
@@ -1710,7 +1705,7 @@ class XPCShellTests(object):
         self.timeoutAsPass = options.get("timeoutAsPass")
         self.crashAsPass = options.get("crashAsPass")
         self.conditionedProfile = options.get("conditionedProfile")
-        self.repeat = options.get("repeat")
+        self.repeat = options.get("repeat", 0)
 
         self.testCount = 0
         self.passCount = 0
@@ -1808,7 +1803,6 @@ class XPCShellTests(object):
             "testingModulesDir": self.testingModulesDir,
             "debuggerInfo": self.debuggerInfo,
             "jsDebuggerInfo": self.jsDebuggerInfo,
-            "httpdJSPath": self.httpdJSPath,
             "headJSPath": self.headJSPath,
             "tempDir": self.tempDir,
             "testharnessdir": self.testharnessdir,
@@ -1883,7 +1877,7 @@ class XPCShellTests(object):
         sequential_tests = []
         status = None
 
-        if options.get("repeat") > 0:
+        if options.get("repeat", 0) > 0:
             self.sequential = True
 
         if not options.get("verify"):
@@ -1898,7 +1892,7 @@ class XPCShellTests(object):
                     continue
 
                 # if we have --repeat, duplicate the tests as needed
-                for i in range(0, options.get("repeat") + 1):
+                for i in range(0, options.get("repeat", 0) + 1):
                     self.testCount += 1
 
                     test = testClass(

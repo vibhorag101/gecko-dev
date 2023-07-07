@@ -6,15 +6,12 @@
 #include "HTMLImageMapAccessible.h"
 
 #include "ARIAMap.h"
-#include "nsAccUtils.h"
-#include "DocAccessible-inl.h"
 #include "EventTree.h"
 #include "Role.h"
 
 #include "nsIFrame.h"
 #include "nsImageFrame.h"
 #include "nsImageMap.h"
-#include "nsIURI.h"
 #include "nsLayoutUtils.h"
 #include "mozilla/dom/HTMLAreaElement.h"
 
@@ -112,8 +109,7 @@ ENameValueFlag HTMLAreaAccessible::NativeName(nsString& aName) const {
   ENameValueFlag nameFlag = LocalAccessible::NativeName(aName);
   if (!aName.IsEmpty()) return nameFlag;
 
-  if (!mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::alt,
-                                      aName)) {
+  if (!mContent->AsElement()->GetAttr(nsGkAtoms::alt, aName)) {
     Value(aName);
   }
 

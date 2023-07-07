@@ -30,20 +30,6 @@ binutils-2.36.1:
         strip-components: 1
         add-prefix: binutils-source/
 
-gcc-7.5.0:
-    description: GCC 7.5.0 source code
-    fetch:
-        type: static-url
-        url: https://ftp.gnu.org/gnu/gcc/gcc-7.5.0/gcc-7.5.0.tar.xz
-        sha256: b81946e7f01f90528a1f7352ab08cc602b9ccc05d4e44da4bd501c5a189ee661
-        size: 62783088
-        gpg-signature:
-            sig-url: "{url}.sig"
-            key-path: build/unix/build-gcc/7F74F97C103468EE5D750B583AB00996FC26A641.key
-        artifact-name: gcc-source.tar.zst
-        strip-components: 1
-        add-prefix: gcc-source/
-
 gcc-8.5.0:
     description: GCC 8.5.0 source code
     fetch:
@@ -331,6 +317,15 @@ mingw-w64:
         repo: https://git.code.sf.net/p/mingw-w64/mingw-w64
         revision: f9500e2d85b9400c0982518663660a127e1dc61a
 
+mingw-w64-trunk:
+    description: mingw-w64 master branch source code
+    attributes:
+        cached_task: false
+    fetch:
+        type: git
+        repo: https://git.code.sf.net/p/mingw-w64/mingw-w64
+        branch: master
+
 llvm-mingw:
     description: llvm-mingw source code
     fetch:
@@ -611,14 +606,14 @@ cargo-vet:
     fetch:
         type: git
         repo: https://github.com/mozilla/cargo-vet
-        revision: 8cdbbd89a686866b3970be5e30e0f7092c0c5296
+        revision: 8c8b6d7a5237544c613de616a031586587f49a42
 
 symbol-scrapers:
     description: Linux distribution symbol scraper source
     fetch:
         type: git
         repo: http://github.com/mozilla/symbol-scrapers
-        revision: f61d24345d27760a5c2dc8f9370368bdaa9a4e82
+        revision: 91cb0fb5f4a4eb5f64f255d54cd287123758c0f1
 
 cpython-3.8.10:
     description: cpython 3.8.10 source code

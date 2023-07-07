@@ -10,8 +10,8 @@
 // is used (from service.js).
 /* global Service */
 
-var { AddonTestUtils, MockAsyncShutdown } = ChromeUtils.import(
-  "resource://testing-common/AddonTestUtils.jsm"
+var { AddonTestUtils, MockAsyncShutdown } = ChromeUtils.importESModule(
+  "resource://testing-common/AddonTestUtils.sys.mjs"
 );
 var { Async } = ChromeUtils.importESModule(
   "resource://services-common/async.sys.mjs"
@@ -56,11 +56,9 @@ var {
 } = ChromeUtils.importESModule(
   "resource://testing-common/services/sync/utils.sys.mjs"
 );
-ChromeUtils.defineModuleGetter(
-  this,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
-);
+ChromeUtils.defineESModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+});
 
 add_setup(async function head_setup() {
   // Initialize logging. This will sometimes be reset by a pref reset,
@@ -76,7 +74,9 @@ XPCOMUtils.defineLazyGetter(this, "SyncPingSchema", function () {
   let { FileUtils } = ChromeUtils.importESModule(
     "resource://gre/modules/FileUtils.sys.mjs"
   );
-  let { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+  let { NetUtil } = ChromeUtils.importESModule(
+    "resource://gre/modules/NetUtil.sys.mjs"
+  );
   let stream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(
     Ci.nsIFileInputStream
   );
@@ -557,10 +557,13 @@ async function registerRotaryEngine() {
 // Set the validation prefs to attempt validation every time to avoid non-determinism.
 function enableValidationPrefs(engines = ["bookmarks"]) {
   for (let engine of engines) {
-    Svc.Prefs.set(`engine.${engine}.validation.interval`, 0);
-    Svc.Prefs.set(`engine.${engine}.validation.percentageChance`, 100);
-    Svc.Prefs.set(`engine.${engine}.validation.maxRecords`, -1);
-    Svc.Prefs.set(`engine.${engine}.validation.enabled`, true);
+    Svc.PrefBranch.setIntPref(`engine.${engine}.validation.interval`, 0);
+    Svc.PrefBranch.setIntPref(
+      `engine.${engine}.validation.percentageChance`,
+      100
+    );
+    Svc.PrefBranch.setIntPref(`engine.${engine}.validation.maxRecords`, -1);
+    Svc.PrefBranch.setBoolPref(`engine.${engine}.validation.enabled`, true);
   }
 }
 

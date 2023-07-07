@@ -20,7 +20,6 @@ const ip = require(`${node_http2_root}/../node_ip`);
 const { fork } = require("child_process");
 const path = require("path");
 const zlib = require("zlib");
-const odoh = require(`${node_http2_root}/../odoh-wasm/pkg`);
 
 // Hook into the decompression code to log the decompressed name-value pairs
 var compression_module = node_http2_root + "/lib/protocol/compressor";
@@ -1121,174 +1120,6 @@ function handleRequest(req, res) {
       res.end("");
     });
     return;
-  } else if (u.pathname === "/odohconfig") {
-    let payload = Buffer.from("");
-    req.on("data", function receiveData(chunk) {
-      payload = Buffer.concat([payload, chunk]);
-    });
-    req.on("end", function finishedData() {
-      let answers = [];
-      let odohconfig;
-      if (u.query.invalid) {
-        if (u.query.invalid === "empty") {
-          odohconfig = Buffer.from("");
-        } else if (u.query.invalid === "version") {
-          odohconfig = Buffer.from(
-            "002cff030028002000010001002021c8c16355091b28d521cb196627297955c1b607a3dcf1f136534578460d077d",
-            "hex"
-          );
-        } else if (u.query.invalid === "configLength") {
-          odohconfig = Buffer.from(
-            "002cff040028002000010001002021c8c16355091b28d521cb196627297955c1b607a3dcf1f136534578460d07",
-            "hex"
-          );
-        } else if (u.query.invalid === "totalLength") {
-          odohconfig = Buffer.from(
-            "012cff030028002000010001002021c8c16355091b28d521cb196627297955c1b607a3dcf1f136534578460d077d",
-            "hex"
-          );
-        } else if (u.query.invalid === "kemId") {
-          odohconfig = Buffer.from(
-            "002cff040028002100010001002021c8c16355091b28d521cb196627297955c1b607a3dcf1f136534578460d077d",
-            "hex"
-          );
-        }
-      } else {
-        odohconfig = odoh.get_odoh_config();
-      }
-
-      if (u.query.downloadFrom === "http") {
-        res.writeHead(200);
-        res.write(odohconfig);
-        res.end("");
-      } else {
-        var b64encoded = Buffer.from(odohconfig).toString("base64");
-        let packet = dnsPacket.decode(payload);
-        if (
-          u.query.failConfirmation == "true" &&
-          packet.questions[0].type == "NS" &&
-          packet.questions[0].name == "example.com"
-        ) {
-          res.writeHead(200);
-          res.write("<12bytes");
-          res.end("");
-          return;
-        }
-        if (packet.questions[0].type == "HTTPS") {
-          answers.push({
-            name: packet.questions[0].name,
-            type: packet.questions[0].type,
-            ttl: u.query.ttl ? u.query.ttl : 55,
-            class: "IN",
-            flush: false,
-            data: {
-              priority: 1,
-              name: packet.questions[0].name,
-              values: [
-                {
-                  key: "odoh",
-                  value: b64encoded,
-                  needBase64Decode: true,
-                },
-              ],
-            },
-          });
-        }
-
-        let buf = dnsPacket.encode({
-          type: "response",
-          id: packet.id,
-          flags: dnsPacket.RECURSION_DESIRED,
-          questions: packet.questions,
-          answers,
-        });
-
-        res.setHeader("Content-Type", "application/dns-message");
-        res.setHeader("Content-Length", buf.length);
-        res.writeHead(200);
-        res.write(buf);
-        res.end("");
-      }
-    });
-    return;
-  } else if (u.pathname === "/odoh") {
-    let responseIP = u.query.responseIP;
-    if (!responseIP) {
-      responseIP = "5.5.5.5";
-    }
-
-    if (u.query.auth) {
-      if (!handleAuth()) {
-        return;
-      }
-    }
-
-    if (u.query.noResponse) {
-      return;
-    }
-
-    let payload = Buffer.from("");
-
-    function emitResponse(response, requestPayload) {
-      let decryptedQuery = odoh.decrypt_query(requestPayload);
-      let packet = dnsPacket.decode(Buffer.from(decryptedQuery.buffer));
-      let answer = createDNSAnswer(
-        response,
-        packet,
-        responseIP,
-        requestPayload
-      );
-      if (!answer) {
-        return;
-      }
-
-      let encryptedResponse = odoh.create_response(answer);
-      writeDNSResponse(
-        response,
-        encryptedResponse,
-        getDelayFromPacket(packet, responseType(packet, responseIP)),
-        "application/oblivious-dns-message"
-      );
-    }
-
-    if (u.query.dns) {
-      payload = Buffer.from(u.query.dns, "base64");
-      emitResponse(res, payload);
-      return;
-    }
-
-    req.on("data", function receiveData(chunk) {
-      payload = Buffer.concat([payload, chunk]);
-    });
-    req.on("end", function finishedData() {
-      if (u.query.httpError) {
-        res.writeHead(404);
-        res.end("Not Found");
-        return;
-      }
-
-      if (u.query.cname) {
-        let decryptedQuery = odoh.decrypt_query(payload);
-        let rContent;
-        if (u.query.cname === "ARecord") {
-          rContent = createCNameARecord();
-        } else {
-          rContent = createCNameContent(Buffer.from(decryptedQuery.buffer));
-        }
-        let encryptedResponse = odoh.create_response(rContent);
-        res.setHeader("Content-Type", "application/oblivious-dns-message");
-        res.setHeader("Content-Length", encryptedResponse.length);
-        res.writeHead(200);
-        res.write(encryptedResponse);
-        res.end("");
-        return;
-      }
-      // parload is empty when we send redirect response.
-      if (payload.length) {
-        emitResponse(res, payload);
-      }
-    });
-    return;
   } else if (u.pathname === "/httpssvc_as_altsvc") {
     let payload = Buffer.from("");
     req.on("data", function receiveData(chunk) {
@@ -1690,6 +1521,25 @@ function handleRequest(req, res) {
       res.setHeader("x-conditional", "true");
     }
     // default response from here
+  } else if (u.pathname === "/immutable-test-expired-with-Expires-header") {
+    res.setHeader("Cache-Control", "immutable");
+    res.setHeader("Expires", "Mon, 01 Jan 1990 00:00:00 GMT");
+    res.setHeader("Etag", "3");
+
+    if (req.headers["if-none-match"]) {
+      res.setHeader("x-conditional", "true");
+    }
+  } else if (
+    u.pathname === "/immutable-test-expired-with-last-modified-header"
+  ) {
+    res.setHeader("Cache-Control", "public, max-age=3600, immutable");
+    res.setHeader("Date", "Mon, 01 Jan 1990 00:00:00 GMT");
+    res.setHeader("Last-modified", "Mon, 01 Jan 1990 00:00:00 GMT");
+    res.setHeader("Etag", "4");
+
+    if (req.headers["if-none-match"]) {
+      res.setHeader("x-conditional", "true");
+    }
   } else if (u.pathname === "/origin-4") {
     let originList = [];
     req.stream.connection.originFrame(originList);

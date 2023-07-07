@@ -6,12 +6,8 @@
 
 "use strict";
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
-);
 ChromeUtils.defineESModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   ExtensionTestCommon: "resource://testing-common/ExtensionTestCommon.sys.mjs",
 });
 
@@ -43,7 +39,7 @@ const REMOTE_SETTINGS_RESULTS = [
         icon: "https://example.com/first-addon.svg",
         title: "First Addon",
         rating: "4.7",
-        keywords: ["first", "1st"],
+        keywords: ["first", "1st", "two words", "a b c"],
         description: "Description for the First Addon",
         number_of_ratings: 1256,
         is_top_pick: true,
@@ -86,6 +82,14 @@ add_setup(async function init() {
     remoteSettingsResults: REMOTE_SETTINGS_RESULTS,
     merinoSuggestions: MERINO_SUGGESTIONS,
   });
+});
+
+add_task(async function telemetryType() {
+  Assert.equal(
+    QuickSuggest.getFeature("AddonSuggestions").getSuggestionTelemetryType({}),
+    "amo",
+    "Telemetry type should be 'amo'"
+  );
 });
 
 // When non-sponsored suggestions are disabled, addon suggestions should be
@@ -254,6 +258,22 @@ add_task(async function hideIfAlreadyInstalled() {
 add_task(async function remoteSettings() {
   const testCases = [
     {
+      input: "f",
+      expected: null,
+    },
+    {
+      input: "fi",
+      expected: null,
+    },
+    {
+      input: "fir",
+      expected: null,
+    },
+    {
+      input: "firs",
+      expected: null,
+    },
+    {
       input: "first",
       expected: makeExpectedResult({
         suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
@@ -263,6 +283,110 @@ add_task(async function remoteSettings() {
     },
     {
       input: "1st",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "t",
+      expected: null,
+    },
+    {
+      input: "tw",
+      expected: null,
+    },
+    {
+      input: "two",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "two ",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "two w",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "two wo",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "two wor",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "two word",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "two words",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "a",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "a ",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "a b",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "a b ",
+      expected: makeExpectedResult({
+        suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+        source: "remote-settings",
+        isTopPick: true,
+      }),
+    },
+    {
+      input: "a b c",
       expected: makeExpectedResult({
         suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
         source: "remote-settings",
@@ -301,16 +425,10 @@ add_task(async function remoteSettings() {
         isTopPick: true,
       }),
     },
-    {
-      // Merino result.
-      input: "not rs",
-      expected: makeExpectedResult({
-        suggestion: MERINO_SUGGESTIONS[0],
-        source: "merino",
-        isTopPick: true,
-      }),
-    },
   ];
+
+  // Disable Merino so we trigger only remote settings suggestions.
+  UrlbarPrefs.set("quicksuggest.dataCollection.enabled", false);
 
   for (const { input, expected } of testCases) {
     await check_results({
@@ -318,9 +436,11 @@ add_task(async function remoteSettings() {
         providers: [UrlbarProviderQuickSuggest.name],
         isPrivate: false,
       }),
-      matches: [expected],
+      matches: expected ? [expected] : [],
     });
   }
+
+  UrlbarPrefs.set("quicksuggest.dataCollection.enabled", true);
 });
 
 add_task(async function merinoIsTopPick() {
@@ -361,13 +481,31 @@ add_task(async function merinoIsTopPick() {
   });
 });
 
+// Tests the "show less frequently" behavior.
+add_task(async function showLessFrequently() {
+  await doShowLessFrequentlyTests({
+    feature: QuickSuggest.getFeature("AddonSuggestions"),
+    showLessFrequentlyCountPref: "addons.showLessFrequentlyCount",
+    nimbusCapVariable: "addonsShowLessFrequentlyCap",
+    expectedResult: makeExpectedResult({
+      suggestion: REMOTE_SETTINGS_RESULTS[0].attachment[0],
+      source: "remote-settings",
+      isTopPick: true,
+    }),
+    keyword: "two words",
+  });
+});
+
 function makeExpectedResult({ suggestion, source, isTopPick }) {
+  let provider;
   let rating;
   let number_of_ratings;
   if (source === "remote-settings") {
+    provider = "AddonSuggestions";
     rating = suggestion.rating;
     number_of_ratings = suggestion.number_of_ratings;
   } else {
+    provider = "amo";
     rating = suggestion.custom_details.amo.rating;
     number_of_ratings = suggestion.custom_details.amo.number_of_ratings;
   }
@@ -391,6 +529,7 @@ function makeExpectedResult({ suggestion, source, isTopPick }) {
       shouldNavigate: true,
       helpUrl: QuickSuggest.HELP_URL,
       source,
+      provider,
     },
   };
 }

@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "Accessible.h"
-#include "AccGroupInfo.h"
 #include "ARIAMap.h"
 #include "nsAccUtils.h"
 #include "nsIURI.h"
@@ -464,7 +463,11 @@ void Accessible::DebugDescription(nsCString& aDesc) const {
 void Accessible::DebugPrint(const char* aPrefix,
                             const Accessible* aAccessible) {
   nsAutoCString desc;
-  aAccessible->DebugDescription(desc);
+  if (aAccessible) {
+    aAccessible->DebugDescription(desc);
+  } else {
+    desc.AssignLiteral("[null]");
+  }
 #  if defined(ANDROID)
   printf_stderr("%s %s\n", aPrefix, desc.get());
 #  else

@@ -36,9 +36,9 @@
 #include "TRR.h"
 #include "TRRQuery.h"
 #include "TRRService.h"
-#include "ODoHService.h"
 
 #include "mozilla/Atomics.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Telemetry.h"
@@ -933,9 +933,7 @@ nsresult nsHostResolver::TrrLookup(nsHostRecord* aRec,
   MaybeRenewHostRecordLocked(rec, aLock);
 
   RefPtr<TRRQuery> query = new TRRQuery(this, rec);
-  bool useODoH = gODoHService->Enabled() &&
-                 !((rec->flags & nsIDNSService::RESOLVE_DISABLE_ODOH));
-  nsresult rv = query->DispatchLookup(pushedTRR, useODoH);
+  nsresult rv = query->DispatchLookup(pushedTRR);
   if (NS_FAILED(rv)) {
     rec->RecordReason(TRRSkippedReason::TRR_DID_NOT_MAKE_QUERY);
     return rv;
@@ -1292,7 +1290,7 @@ void nsHostResolver::PrepareRecordExpirationAddrRecord(
   unsigned int grace = mDefaultGracePeriod;
 
   unsigned int ttl = mDefaultCacheLifetime;
-  if (sGetTtlEnabled || rec->addr_info->IsTRROrODoH()) {
+  if (sGetTtlEnabled || rec->addr_info->IsTRR()) {
     if (rec->addr_info && rec->addr_info->TTL() != AddrInfo::NO_TTL_DATA) {
       ttl = rec->addr_info->TTL();
     }
@@ -1604,7 +1602,7 @@ nsHostResolver::LookupStatus nsHostResolver::CompleteLookupLocked(
   bool hasNativeResult = false;
   {
     MutexAutoLock lock(addrRec->addr_info_lock);
-    if (addrRec->addr_info && !addrRec->addr_info->IsTRROrODoH()) {
+    if (addrRec->addr_info && !addrRec->addr_info->IsTRR()) {
       hasNativeResult = true;
     }
   }
@@ -1794,23 +1792,21 @@ void nsHostResolver::ThreadFunc() {
 
       if (!mShutdown) {
         TimeDuration elapsed = TimeStamp::Now() - startTime;
-        uint32_t millis = static_cast<uint32_t>(elapsed.ToMilliseconds());
-
         if (NS_SUCCEEDED(status)) {
-          Telemetry::HistogramID histogramID;
           if (!rec->addr_info_gencnt) {
             // Time for initial lookup.
-            histogramID = Telemetry::DNS_LOOKUP_TIME;
+            glean::networking::dns_lookup_time.AccumulateRawDuration(elapsed);
           } else if (!getTtl) {
             // Time for renewal; categorized by expiration strategy.
-            histogramID = Telemetry::DNS_RENEWAL_TIME;
+            glean::networking::dns_renewal_time.AccumulateRawDuration(elapsed);
           } else {
             // Time to get TTL; categorized by expiration strategy.
-            histogramID = Telemetry::DNS_RENEWAL_TIME_FOR_TTL;
+            glean::networking::dns_renewal_time_for_ttl.AccumulateRawDuration(
+                elapsed);
           }
-          Telemetry::Accumulate(histogramID, millis);
         } else {
-          Telemetry::Accumulate(Telemetry::DNS_FAILED_LOOKUP_TIME, millis);
+          glean::networking::dns_failed_lookup_time.AccumulateRawDuration(
+              elapsed);
         }
       }
     }
@@ -1899,7 +1895,7 @@ void nsHostResolver::GetDNSCacheEntries(nsTArray<DNSCacheEntries>* args) {
           info.hostaddr.AppendElement(buf);
         }
       }
-      info.TRR = addrRec->addr_info->IsTRROrODoH();
+      info.TRR = addrRec->addr_info->IsTRR();
     }
 
     info.originAttributesSuffix = recordEntry.GetKey().originSuffix;

@@ -7,14 +7,11 @@ const { sinon } = ChromeUtils.importESModule(
 );
 
 ChromeUtils.defineESModuleGetters(this, {
+  ExtensionControlledPopup:
+    "resource:///modules/ExtensionControlledPopup.sys.mjs",
   ExtensionSettingsStore:
     "resource://gre/modules/ExtensionSettingsStore.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "ExtensionControlledPopup",
-  "resource:///modules/ExtensionControlledPopup.jsm"
-);
 
 function createMarkup(doc, popup) {
   let panel = ExtensionControlledPopup._getAndMaybeCreatePanel(doc);
@@ -86,7 +83,6 @@ add_task(async function testExtensionControlledPopup() {
     settingKey,
     descriptionId: "extension-controlled-description",
     descriptionMessageId: "newTabControlled.message2",
-    learnMoreMessageId: "newTabControlled.learnMore",
     learnMoreLink: "extension-controlled",
     onObserverAdded,
     onObserverRemoved,
@@ -165,7 +161,7 @@ add_task(async function testExtensionControlledPopup() {
     "An extension,  Ext Controlled, changed the page you see when you open a new tab.Learn more",
     "The extension name is in the description"
   );
-  let link = description.querySelector("label");
+  let link = description.querySelector("a.learnMore");
   is(
     link.href,
     "http://127.0.0.1:8888/support-dummy/extension-controlled",

@@ -4,6 +4,7 @@
 
 /* eslint no-shadow: error, mozilla/no-aArgs: error */
 
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
@@ -284,7 +285,19 @@ export var SearchUtils = {
    *   The current settings version.
    */
   get SETTINGS_VERSION() {
-    return 8;
+    return 9;
+  },
+
+  /**
+   * Indicates the channel that the build is on, with added hardening for ESR
+   * since some ESR builds may be self-built or not on the same channel.
+   *
+   * @returns {string}
+   *   Returns the modified channel, with a focus on ESR if the application
+   *   version is indicating ESR.
+   */
+  get MODIFIED_APP_CHANNEL() {
+    return AppConstants.IS_ESR ? "esr" : AppConstants.MOZ_UPDATE_CHANNEL;
   },
 
   /**

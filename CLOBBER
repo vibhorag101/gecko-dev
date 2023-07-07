@@ -23,4 +23,4 @@
 # don't change CLOBBER for WebIDL changes any more.
 
 
-Bug 1824744 - Update to ICU 73 requires clobber
+Modified build files in third_party/libwebrtc - Bug 1839451 - (fix-f6eae959bf) s/rtc_encoder_simulcast_proxy/rtc_simulcast_encoder_adapter/ BUILD ref.

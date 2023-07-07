@@ -316,6 +316,8 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "CSSPageRule", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "CSSPropertyRule", insecureContext: true, nightly: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "CSSPseudoElement", insecureContext: true, disabled: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "CSSRule", insecureContext: true },
@@ -401,6 +403,8 @@ let interfaceNamesInGlobalScope = [
   { name: "Element", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "ElementInternals", insecureContext: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "EncodedVideoChunk", insecureContext: true, nightly: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "ErrorEvent", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -510,6 +514,10 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "GPUDeviceLostInfo", nightly: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUError", nightly: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUInternalError", nightly: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "GPUMapMode", nightly: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "GPUOutOfMemoryError", nightly: true },
@@ -553,6 +561,10 @@ let interfaceNamesInGlobalScope = [
   { name: "Headers", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "History", insecureContext: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "Highlight", insecureContext: true, nightly: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "HighlightRegistry", insecureContext: true, nightly: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "HTMLAllCollection", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -730,6 +742,8 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "IDBVersionChangeEvent", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "IdentityCredential", nightly: true, desktop: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "IIRFilterNode", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "Image", insecureContext: true },
@@ -892,12 +906,6 @@ let interfaceNamesInGlobalScope = [
   { name: "OfflineAudioCompletionEvent", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "OfflineAudioContext", insecureContext: true },
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  {
-    name: "OfflineResourceList",
-    insecureContext: false,
-    disabled: isEarlyBetaOrEarlier,
-  },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "OffscreenCanvas", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -1395,6 +1403,12 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "ValidityState", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "VideoColorSpace", insecureContext: true, nightly: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "VideoDecoder", nightly: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "VideoFrame", insecureContext: true, nightly: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "VideoPlaybackQuality", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "VisualViewport", insecureContext: true },
@@ -1494,12 +1508,6 @@ let interfaceNamesInGlobalScope = [
   { name: "XSLTProcessor", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "alert", insecureContext: true },
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  {
-    name: "applicationCache",
-    insecureContext: false,
-    disabled: isEarlyBetaOrEarlier,
-  },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "atob", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -1624,6 +1632,8 @@ let interfaceNamesInGlobalScope = [
   { name: "onbeforeunload", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "onblur", insecureContext: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "oncancel", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   { name: "oncanplay", insecureContext: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!

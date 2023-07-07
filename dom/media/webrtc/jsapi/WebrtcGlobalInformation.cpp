@@ -4,6 +4,7 @@
 
 #include "WebrtcGlobalInformation.h"
 #include "WebrtcGlobalStatsHistory.h"
+#include "libwebrtcglue/VideoConduit.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/dom/PWebrtcGlobal.h"
@@ -20,11 +21,13 @@
 #include "mozilla/dom/RTCStatsReportBinding.h"  // for RTCStatsReportInternal
 #include "mozilla/dom/ContentChild.h"
 
+#include "ErrorList.h"
 #include "nsISupports.h"
 #include "nsITimer.h"
 #include "nsLiteralString.h"
 #include "nsNetCID.h"               // NS_SOCKETTRANSPORTSERVICE_CONTRACTID
 #include "nsServiceManagerUtils.h"  // do_GetService
+#include "nsXULAppAPI.h"
 #include "mozilla/ErrorResult.h"
 #include "nsProxyRelease.h"  // nsMainThreadPtrHolder
 #include "mozilla/Telemetry.h"
@@ -174,7 +177,9 @@ static void ClearLongTermStats() {
   }
 
   GetWebrtcGlobalStatsStash().Clear();
-  WebrtcGlobalStatsHistory::Clear();
+  if (XRE_IsParentProcess()) {
+    WebrtcGlobalStatsHistory::Clear();
+  }
   if (auto* ctx = GetPeerConnectionCtx()) {
     ctx->ClearClosedStats();
   }
@@ -245,6 +250,11 @@ void WebrtcGlobalInformation::GetStatsHistorySince(
   IgnoredErrorResult rv;
   aStatsCallback.Call(history, rv);
   aRv = NS_OK;
+}
+
+void WebrtcGlobalInformation::GetMediaContext(
+    const GlobalObject& aGlobal, WebrtcGlobalMediaContext& aContext) {
+  aContext.mHasH264Hardware = WebrtcVideoConduit::HasH264Hardware();
 }
 
 using StatsPromiseArray =
@@ -739,7 +749,6 @@ mozilla::ipc::IPCResult WebrtcGlobalChild::RecvClearStats() {
   }
 
   ClearLongTermStats();
-  WebrtcGlobalStatsHistory::Clear();
   return IPC_OK();
 }
 

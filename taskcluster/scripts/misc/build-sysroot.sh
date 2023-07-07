@@ -20,7 +20,7 @@ case "$arch" in
 i386|amd64)
   dist=jessie
   if [ -n "$PACKAGES_TASKS" ]; then
-    gcc_version=7
+    gcc_version=8
   else
     gcc_version=4.9
   fi
@@ -42,7 +42,7 @@ jessie)
   repo_url=https://archive.debian.org/debian
   ;;
 *)
-  SNAPSHOT=20210208T213147Z
+  SNAPSHOT=20230611T210420Z
   repo_url=http://snapshot.debian.org/archive/debian/$SNAPSHOT
   ;;
 esac

@@ -19,7 +19,8 @@ const SEARCH_AD_CLICKS_SCALAR_BASE = "browser.search.adclicks.";
 const SEARCH_DATA_TRANSFERRED_SCALAR = "browser.search.data_transferred";
 const SEARCH_TELEMETRY_PRIVATE_BROWSING_KEY_SUFFIX = "pb";
 
-const TELEMETRY_SETTINGS_KEY = "search-telemetry-v2";
+// Exported for tests.
+export const TELEMETRY_SETTINGS_KEY = "search-telemetry-v2";
 
 const impressionIdsWithoutEngagementsSet = new Set();
 
@@ -60,6 +61,7 @@ export var SearchSERPTelemetryUtils = {
   },
   INCONTENT_SOURCES: {
     OPENED_IN_NEW_TAB: "opened_in_new_tab",
+    REFINE_ON_SERP: "follow_on_from_refine_on_SERP",
     SEARCHBOX: "follow_on_from_refine_on_incontent_search",
   },
 };
@@ -120,26 +122,14 @@ class TelemetryHandler {
    *
    * @param {browser} browser
    *   The browser object associated with the page that should be a SERP.
-   * @param {string} type
+   * @param {string} source
    *   The source that started the load. One of
-   *   SearchSERPTelemetryUtils.COMPONENTS.INCONTENT_SEARCHBOX or
-   *   SearchSERPTelemetryUtils.INCONTENT_SOURCES.OPENED_IN_NEW_TAB.
+   *   SearchSERPTelemetryUtils.COMPONENTS.INCONTENT_SEARCHBOX,
+   *   SearchSERPTelemetryUtils.INCONTENT_SOURCES.OPENED_IN_NEW_TAB or
+   *   SearchSERPTelemetryUtils.INCONTENT_SOURCES.REFINE_ON_SERP.
    */
-  setBrowserContentSource(browser, type) {
-    switch (type) {
-      case SearchSERPTelemetryUtils.COMPONENTS.INCONTENT_SEARCHBOX:
-        this.#browserContentSourceMap.set(
-          browser,
-          SearchSERPTelemetryUtils.INCONTENT_SOURCES.SEARCHBOX
-        );
-        break;
-      case SearchSERPTelemetryUtils.INCONTENT_SOURCES.OPENED_IN_NEW_TAB:
-        this.#browserContentSourceMap.set(
-          browser,
-          SearchSERPTelemetryUtils.INCONTENT_SOURCES.OPENED_IN_NEW_TAB
-        );
-        break;
-    }
+  setBrowserContentSource(browser, source) {
+    this.#browserContentSourceMap.set(browser, source);
   }
 
   // _browserNewtabSessionMap is a map of the newtab session id for particular
@@ -261,7 +251,7 @@ class TelemetryHandler {
    */
   handleEvent(event) {
     if (event.type != "TabClose") {
-      console.error(`Received unexpected event type ${event.type}`);
+      console.error("Received unexpected event type", event.type);
       return;
     }
 
@@ -990,11 +980,19 @@ class ContentHandler {
         (channel.loadInfo.isTopLevelLoad ||
           info.nonAdsLinkRegexps.some(r => r.test(URL)))
       ) {
-        let start = Cu.now();
+        let browser = wrappedChannel.browserElement;
+        // If the load is from history, don't record an event.
+        if (
+          browser?.browsingContext.webProgress?.loadType &
+          Ci.nsIDocShell.LOAD_CMD_HISTORY
+        ) {
+          lazy.logConsole.debug("Ignoring load from history");
+          return;
+        }
 
         // Step 1: Check if the browser associated with the request was a
         // tracked SERP.
-        let browser = wrappedChannel.browserElement;
+        let start = Cu.now();
         let telemetryState;
         let isFromNewtab = false;
         if (item.browserTelemetryStateMap.has(browser)) {
@@ -1052,7 +1050,14 @@ class ContentHandler {
             type = SearchSERPTelemetryUtils.COMPONENTS.NON_ADS_LINK;
           }
 
-          if (isSerp && isFromNewtab) {
+          if (
+            type == SearchSERPTelemetryUtils.COMPONENTS.REFINED_SEARCH_BUTTONS
+          ) {
+            SearchSERPTelemetry.setBrowserContentSource(
+              browser,
+              SearchSERPTelemetryUtils.INCONTENT_SOURCES.REFINE_ON_SERP
+            );
+          } else if (isSerp && isFromNewtab) {
             SearchSERPTelemetry.setBrowserContentSource(
               browser,
               SearchSERPTelemetryUtils.INCONTENT_SOURCES.OPENED_IN_NEW_TAB
@@ -1261,7 +1266,10 @@ class ContentHandler {
         info.action == SearchSERPTelemetryUtils.ACTIONS.SUBMITTED
       ) {
         telemetryState.searchBoxSubmitted = true;
-        SearchSERPTelemetry.setBrowserContentSource(browser, info.type);
+        SearchSERPTelemetry.setBrowserContentSource(
+          browser,
+          SearchSERPTelemetryUtils.INCONTENT_SOURCES.SEARCHBOX
+        );
       }
     } else {
       lazy.logConsole.warn(
@@ -1292,13 +1300,13 @@ class ContentHandler {
         tagged: impressionInfo.tagged,
         partner_code: impressionInfo.partnerCode,
         source: impressionInfo.source,
-        shopping_tab_displayed: info.hasShoppingTab,
+        shopping_tab_displayed: info.shoppingTabDisplayed,
         is_shopping_page: impressionInfo.isShoppingPage,
       });
       lazy.logConsole.debug(`Reported Impression:`, {
         impressionId,
         ...impressionInfo,
-        hasShopping: info.hasShoppingTab,
+        shoppingTabDisplayed: info.shoppingTabDisplayed,
       });
     } else {
       lazy.logConsole.debug("Could not find an impression id.");

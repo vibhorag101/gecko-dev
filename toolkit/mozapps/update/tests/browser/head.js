@@ -263,7 +263,7 @@ async function setAppUpdateAutoEnabledHelper(enabled) {
  * @param  notificationId
  *         The ID of the notification to get the button for.
  * @param  button
- *         The anonid of the button to get.
+ *         The anonid of the button to get, or a function to find it.
  * @return The button element.
  */
 function getNotificationButton(win, notificationId, button) {
@@ -271,6 +271,9 @@ function getNotificationButton(win, notificationId, button) {
     `appMenu-${notificationId}-notification`
   );
   ok(!notification.hidden, `${notificationId} notification is showing`);
+  if (typeof button === "function") {
+    return button(notification);
+  }
   return notification[button];
 }
 
@@ -1109,7 +1112,16 @@ function runAboutPrefsUpdateTest(params, steps) {
             let actualText = await SpecialPowers.spawn(
               tab.linkedBrowser,
               [],
-              () => content.document.getElementById("downloading").textContent
+              async () => {
+                const { document } = content;
+                if (document.hasPendingL10nMutations) {
+                  await ContentTaskUtils.waitForEvent(
+                    document,
+                    "L10nMutationsFinished"
+                  );
+                }
+                return document.getElementById("downloading").textContent;
+              }
             );
             let expectedSuffix = DownloadUtils.getTransferTotal(
               data[resultName] == gBadSizeResult ? 0 : patch.size,
@@ -1158,7 +1170,7 @@ function runAboutPrefsUpdateTest(params, steps) {
               selector = "a.manualLink";
             }
             if (selectedPanel.ownerDocument.hasPendingL10nMutations) {
-              await BrowserTestUtils.waitForEvent(
+              await ContentTaskUtils.waitForEvent(
                 selectedPanel.ownerDocument,
                 "L10nMutationsFinished"
               );

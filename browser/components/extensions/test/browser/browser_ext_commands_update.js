@@ -3,14 +3,10 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   ExtensionSettingsStore:
     "resource://gre/modules/ExtensionSettingsStore.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
-);
 
 function enableAddon(addon) {
   return new Promise(resolve => {
@@ -412,10 +408,12 @@ add_task(async function updateSidebarCommand() {
   SidebarUI.hideSwitcherPanel();
   await switcherHidden;
 
-  let buttonId = `button_${makeWidgetId(extension.id)}-sidebar-action`;
-  let button = document.getElementById(buttonId);
-  let shortcut = button.getAttribute("shortcut");
-  ok(shortcut.endsWith("E"), "The button has the shortcut set");
+  let menuitemId = `sidebarswitcher_menu_${makeWidgetId(
+    extension.id
+  )}-sidebar-action`;
+  let menuitem = document.getElementById(menuitemId);
+  let acceltext = menuitem.getAttribute("acceltext");
+  ok(acceltext.endsWith("E"), "The menuitem has the accel text set");
 
   extension.sendMessage("updateShortcut", {
     name: "_execute_sidebar_action",
@@ -423,8 +421,8 @@ add_task(async function updateSidebarCommand() {
   });
   await extension.awaitMessage("done");
 
-  shortcut = button.getAttribute("shortcut");
-  ok(shortcut.endsWith("M"), "The button shortcut has been updated");
+  acceltext = menuitem.getAttribute("acceltext");
+  ok(acceltext.endsWith("M"), "The menuitem accel text has been updated");
 
   await extension.unload();
 });

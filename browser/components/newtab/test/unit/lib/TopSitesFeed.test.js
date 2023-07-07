@@ -2641,6 +2641,52 @@ describe("Top Sites Feed", () => {
       assert.equal(feed._contile.sites.length, 1);
       assert.equal(feed._contile.sites[0].url, "https://www.test1-cached.com");
     });
+
+    it("should still return 3 tiles when nimbus variable overrides max num of sponsored contile tiles", async () => {
+      fakeNimbusFeatures.pocketNewtab.getVariable.returns(3);
+
+      fetchStub.resolves({
+        ok: true,
+        status: 200,
+        headers: new Map([
+          ["cache-control", "private, max-age=859, stale-if-error=10463"],
+        ]),
+        json: () =>
+          Promise.resolve({
+            tiles: [
+              {
+                url: "https://www.test.com",
+                image_url: "images/test-com.png",
+                click_url: "https://www.test-click.com",
+                impression_url: "https://www.test-impression.com",
+                name: "test",
+              },
+              {
+                url: "https://test1.com",
+                image_url: "images/test1-com.png",
+                click_url: "https://www.test1-click.com",
+                impression_url: "https://www.test1-impression.com",
+                name: "test1",
+              },
+              {
+                url: "https://test2.com",
+                image_url: "images/test2-com.png",
+                click_url: "https://www.test2-click.com",
+                impression_url: "https://www.test2-impression.com",
+                name: "test2",
+              },
+            ],
+          }),
+      });
+
+      const fetched = await feed._contile._fetchSites();
+
+      assert.ok(fetched);
+      assert.equal(feed._contile.sites.length, 3);
+      assert.equal(feed._contile.sites[0].url, "https://www.test.com");
+      assert.equal(feed._contile.sites[1].url, "https://test1.com");
+      assert.equal(feed._contile.sites[2].url, "https://test2.com");
+    });
   });
 
   describe("#_mergeSponsoredLinks", () => {
@@ -2664,6 +2710,15 @@ describe("Top Sites Feed", () => {
             click_url: "https://www.test1-click.com",
             impression_url: "https://www.test1-impression.com",
             name: "test1",
+            partner: "amp",
+            sponsored_position: 2,
+          },
+          {
+            url: "https://www.test2.com",
+            image_url: "images/test2-com.png",
+            click_url: "https://www.test2-click.com",
+            impression_url: "https://www.test2-impression.com",
+            name: "test2",
             partner: "amp",
             sponsored_position: 2,
           },
@@ -2734,7 +2789,9 @@ describe("Top Sites Feed", () => {
 
     it("should pick sponsored links based on sov configurations", async () => {
       sandbox.stub(feed._contile, "sov").get(() => sov);
-      fakeNimbusFeatures.pocketNewtab.getVariable.returns(true);
+      fakeNimbusFeatures.pocketNewtab.getVariable.reset();
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(0).returns(true);
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(1).returns(undefined);
       global.Sampling.ratioSample.onCall(0).resolves(0);
       global.Sampling.ratioSample.onCall(1).resolves(1);
 
@@ -2746,6 +2803,70 @@ describe("Top Sites Feed", () => {
       assert.equal(sponsored[1].partner, "moz-sales");
       assert.equal(sponsored[1].sponsored_position, 2);
       assert.equal(sponsored[1].pos, 1);
+    });
+
+    it("should have glean set sov partners", async () => {
+      sandbox.stub(feed._contile, "sov").get(() => sov);
+      fakeNimbusFeatures.pocketNewtab.getVariable.reset();
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(0).returns(true);
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(1).returns(undefined);
+      global.Sampling.ratioSample.onCall(0).resolves(0);
+      global.Sampling.ratioSample.onCall(1).resolves(1);
+      sandbox.spy(Glean.newtab.sovAllocation, "set");
+
+      await feed._mergeSponsoredLinks(fakeSponsoredLinks);
+
+      assert.calledOnce(Glean.newtab.sovAllocation.set);
+      assert.calledWith(Glean.newtab.sovAllocation.set, [
+        '{"pos":1,"assigned":"amp","chosen":"amp"}',
+        '{"pos":2,"assigned":"moz-sales","chosen":"moz-sales"}',
+      ]);
+    });
+
+    it("should have glean set sov partners even with one assignment", async () => {
+      const oneSov = {
+        name: "SOV-20230518215316",
+        allocations: [
+          {
+            position: 1,
+            allocation: [
+              {
+                partner: "amp",
+                percentage: 100,
+              },
+              {
+                partner: "moz-sales",
+                percentage: 0,
+              },
+            ],
+          },
+        ],
+      };
+      sandbox.stub(feed._contile, "sov").get(() => oneSov);
+      fakeNimbusFeatures.pocketNewtab.getVariable.reset();
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(0).returns(true);
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(1).returns(undefined);
+      global.Sampling.ratioSample.onCall(0).resolves(0);
+      sandbox.spy(Glean.newtab.sovAllocation, "set");
+
+      await feed._mergeSponsoredLinks(fakeSponsoredLinks);
+
+      assert.calledOnce(Glean.newtab.sovAllocation.set);
+      assert.calledWith(Glean.newtab.sovAllocation.set, [
+        '{"pos":1,"assigned":"amp","chosen":"amp"}',
+      ]);
+    });
+
+    it("should add remaining contile tiles when nimbus var contile max num sponsored is present", async () => {
+      sandbox.stub(feed._contile, "sov").get(() => sov);
+      fakeNimbusFeatures.pocketNewtab.getVariable.reset();
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(0).returns(true);
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(1).returns(3);
+      global.Sampling.ratioSample.resolves(0);
+
+      const sponsored = await feed._mergeSponsoredLinks(fakeSponsoredLinks);
+
+      assert.equal(sponsored.length, 3);
     });
 
     it("should fall back to other partners if the chosen partner does not have any links", async () => {
@@ -2774,6 +2895,27 @@ describe("Top Sites Feed", () => {
       const sponsored = await feed._mergeSponsoredLinks(fakeSponsoredLinks);
 
       assert.equal(sponsored.length, 0);
+    });
+
+    it("should ignore empty slots from AMP links if present", async () => {
+      sandbox.stub(feed._contile, "sov").get(() => sov);
+      fakeNimbusFeatures.pocketNewtab.getVariable.reset();
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(0).returns(true);
+      fakeNimbusFeatures.pocketNewtab.getVariable.onCall(1).returns(undefined);
+      global.Sampling.ratioSample.onCall(0).resolves(0);
+      global.Sampling.ratioSample.onCall(1).resolves(1);
+
+      // Add a few empty slots to AMP links.
+      fakeSponsoredLinks.amp.unshift(undefined);
+      fakeSponsoredLinks.amp.unshift(undefined);
+      const sponsored = await feed._mergeSponsoredLinks(fakeSponsoredLinks);
+
+      assert.equal(sponsored.length, 2);
+      assert.equal(sponsored[0].partner, "amp");
+      assert.equal(sponsored[0].sponsored_position, 1);
+      assert.equal(sponsored[1].partner, "moz-sales");
+      assert.equal(sponsored[1].sponsored_position, 2);
+      assert.equal(sponsored[1].pos, 1);
     });
   });
 

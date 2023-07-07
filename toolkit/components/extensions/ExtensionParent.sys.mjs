@@ -17,6 +17,7 @@ import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
   BroadcastConduit: "resource://gre/modules/ConduitsParent.sys.mjs",
   DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
@@ -26,14 +27,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   GeckoViewConnection: "resource://gre/modules/GeckoViewWebExtension.sys.mjs",
   MessageManagerProxy: "resource://gre/modules/MessageManagerProxy.sys.mjs",
   NativeApp: "resource://gre/modules/NativeMessaging.sys.mjs",
-  PerformanceCounters: "resource://gre/modules/PerformanceCounters.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   Schemas: "resource://gre/modules/Schemas.sys.mjs",
   getErrorNameForTelemetry: "resource://gre/modules/ExtensionTelemetry.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  AddonManager: "resource://gre/modules/AddonManager.jsm",
 });
 
 XPCOMUtils.defineLazyServiceGetters(lazy, {
@@ -43,13 +39,6 @@ XPCOMUtils.defineLazyServiceGetters(lazy, {
   ],
 });
 
-// We're using the pref to avoid loading PerformanceCounters.jsm for nothing.
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "gTimingEnabled",
-  "extensions.webextensions.enablePerformanceCounters",
-  false
-);
 import { ExtensionCommon } from "resource://gre/modules/ExtensionCommon.sys.mjs";
 import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
@@ -462,10 +451,6 @@ GlobalManager = {
     if (this.extensionMap.size == 0) {
       apiManager.on("extension-browser-inserted", this._onExtensionBrowser);
       this.initialized = true;
-      Services.ppmm.addMessageListener(
-        "Extension:SendPerformanceCounter",
-        this
-      );
     }
     this.extensionMap.set(extension.id, extension);
   },
@@ -476,18 +461,6 @@ GlobalManager = {
     if (this.extensionMap.size == 0 && this.initialized) {
       apiManager.off("extension-browser-inserted", this._onExtensionBrowser);
       this.initialized = false;
-      Services.ppmm.removeMessageListener(
-        "Extension:SendPerformanceCounter",
-        this
-      );
-    }
-  },
-
-  async receiveMessage({ name, data }) {
-    switch (name) {
-      case "Extension:SendPerformanceCounter":
-        lazy.PerformanceCounters.merge(data.counters);
-        break;
     }
   },
 
@@ -1063,14 +1036,9 @@ ParentAPIManager = {
     }
   },
 
-  async retrievePerformanceCounters() {
-    // getting the parent counters
-    return lazy.PerformanceCounters.getData();
-  },
-
   /**
    * Call the given function and also log the call as appropriate
-   * (i.e., with PerformanceCounters and/or activity logging)
+   * (i.e., with activity logging and/or profiler markers)
    *
    * @param {BaseContext} context The context making this call.
    * @param {object} data Additional data about the call.
@@ -1102,14 +1070,6 @@ ParentAPIManager = {
         { startTime: start },
         `${id}, api_call: ${data.path}`
       );
-      if (lazy.gTimingEnabled) {
-        let end = Cu.now() * 1000;
-        lazy.PerformanceCounters.storeExecutionTime(
-          id,
-          data.path,
-          end - start * 1000
-        );
-      }
     }
   },
 

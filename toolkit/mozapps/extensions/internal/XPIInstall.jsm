@@ -34,25 +34,26 @@ const { computeSha256HashAsString, getHashStringForCrypto } =
 const { AppConstants } = ChromeUtils.importESModule(
   "resource://gre/modules/AppConstants.sys.mjs"
 );
-const { AddonManager, AddonManagerPrivate } = ChromeUtils.import(
-  "resource://gre/modules/AddonManager.jsm"
+const { AddonManager, AddonManagerPrivate } = ChromeUtils.importESModule(
+  "resource://gre/modules/AddonManager.sys.mjs"
 );
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AddonRepository: "resource://gre/modules/addons/AddonRepository.sys.mjs",
+  AddonSettings: "resource://gre/modules/addons/AddonSettings.sys.mjs",
   CertUtils: "resource://gre/modules/CertUtils.sys.mjs",
   ExtensionData: "resource://gre/modules/Extension.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  ProductAddonChecker:
+    "resource://gre/modules/addons/ProductAddonChecker.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
 });
 
 XPCOMUtils.defineLazyModuleGetters(lazy, {
-  AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
-  AddonSettings: "resource://gre/modules/addons/AddonSettings.jsm",
   BuiltInThemesHelpers: "resource://gre/modules/addons/XPIDatabase.jsm",
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
-  ProductAddonChecker: "resource://gre/modules/addons/ProductAddonChecker.jsm",
   AddonInternal: "resource://gre/modules/addons/XPIDatabase.jsm",
   XPIDatabase: "resource://gre/modules/addons/XPIDatabase.jsm",
   XPIInternal: "resource://gre/modules/addons/XPIProvider.jsm",
@@ -1957,9 +1958,6 @@ class AddonInstall {
       // Point the add-on to its extracted files as the xpi may get deleted
       this.addon.sourceBundle = stagedAddon;
 
-      // Cache the AddonInternal as it may have updated compatibility info
-      this.location.stageAddon(this.addon.id, this.addon.toJSON());
-
       logger.debug(
         `Staged install of ${this.addon.id} from ${this.sourceURI.spec} ready; waiting for restart.`
       );
@@ -1967,6 +1965,14 @@ class AddonInstall {
         delete this.existingAddon.pendingUpgrade;
         this.existingAddon.pendingUpgrade = this.addon;
       }
+    }
+
+    if (this.state === AddonManager.STATE_POSTPONED) {
+      // Cache the AddonInternal as it may have updated compatibility info. We
+      // do that unconditionally in case the staged install isn't finalized in
+      // the same session. That way, on the next app startup, the add-on will
+      // be installed.
+      this.location.stageAddon(this.addon.id, this.addon.toJSON());
     }
   }
 
@@ -1989,8 +1995,10 @@ class AddonInstall {
    *
    * @param {function} resumeFn
    *        A function for the add-on to run when resuming.
+   * @param {boolean} requiresRestart
+   *        Whether this add-on requires restart.
    */
-  async postpone(resumeFn) {
+  async postpone(resumeFn, requiresRestart = true) {
     this.state = AddonManager.STATE_POSTPONED;
 
     let stagingDir = this.location.installer.getStagingDir();
@@ -2001,7 +2009,7 @@ class AddonInstall {
 
       let stagedAddon = getFile(`${this.addon.id}.xpi`, stagingDir);
 
-      await this.stageInstall(true, stagedAddon, true);
+      await this.stageInstall(requiresRestart, stagedAddon, true);
     } catch (e) {
       logger.warn(`Failed to postpone install of ${this.addon.id}`, e);
       this.state = AddonManager.STATE_INSTALL_FAILED;
@@ -2813,8 +2821,8 @@ AddonInstallWrapper.prototype = {
     return installFor(this).install();
   },
 
-  postpone(returnFn) {
-    return installFor(this).postpone(returnFn);
+  postpone(returnFn, requiresRestart) {
+    return installFor(this).postpone(returnFn, requiresRestart);
   },
 
   cancel() {
@@ -2879,8 +2887,8 @@ var UpdateChecker = function (
     throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
   }
 
-  ({ AddonUpdateChecker } = ChromeUtils.import(
-    "resource://gre/modules/addons/AddonUpdateChecker.jsm"
+  ({ AddonUpdateChecker } = ChromeUtils.importESModule(
+    "resource://gre/modules/addons/AddonUpdateChecker.sys.mjs"
   ));
 
   this.addon = aAddon;

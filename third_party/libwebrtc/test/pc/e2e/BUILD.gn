@@ -80,6 +80,7 @@ if (!build_with_chromium) {
       absl_deps = [
         "//third_party/abseil-cpp/absl/memory",
         "//third_party/abseil-cpp/absl/strings",
+        "//third_party/abseil-cpp/absl/types:optional",
         "//third_party/abseil-cpp/absl/types:variant",
       ]
     }
@@ -135,8 +136,10 @@ if (!build_with_chromium) {
         "../../../api:create_frame_generator",
         "../../../api:frame_generator_api",
         "../../../api:media_stream_interface",
+        "../../../api:sequence_checker",
         "../../../api/test/pclf:media_configuration",
         "../../../api/test/pclf:peer_configurer",
+        "../../../api/test/video:test_video_track_source",
         "../../../api/video:video_frame",
         "../../../pc:session_description",
         "../../../pc:video_track_source",
@@ -316,6 +319,7 @@ if (!build_with_chromium) {
       sources = [ "peer_connection_quality_test_metric_names_test.cc" ]
       deps = [
         ":metric_metadata_keys",
+        ":network_quality_metrics_reporter",
         ":peerconnection_quality_test",
         ":stats_based_network_quality_metrics_reporter",
         "../..:test_support",

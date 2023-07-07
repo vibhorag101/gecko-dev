@@ -11,6 +11,7 @@
 ChromeUtils.defineESModuleGetters(this, {
   BackgroundUpdate: "resource://gre/modules/BackgroundUpdate.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
+  TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
 });
 
 // Constants & Enumeration Values
@@ -98,7 +99,6 @@ Preferences.addAll([
   { id: "font.language.group", type: "wstring" },
 
   // Languages
-  { id: "browser.translation.detectLanguage", type: "bool" },
   { id: "intl.regional_prefs.use_os_locales", type: "bool" },
 
   // General tab
@@ -439,17 +439,6 @@ var gMainPane = {
       makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY)
     );
     setEventListener("chooseLanguage", "command", gMainPane.showLanguages);
-    setEventListener(
-      "translationAttributionImage",
-      "click",
-      gMainPane.openTranslationProviderAttribution
-    );
-    // TODO (Bug 1817084) Remove this code when we disable the extension
-    setEventListener(
-      "translateButton",
-      "command",
-      gMainPane.showTranslationExceptions
-    );
     // TODO (Bug 1817084) Remove this code when we disable the extension
     setEventListener(
       "fxtranslateButton",
@@ -512,20 +501,6 @@ var gMainPane = {
     this._rebuildFonts();
 
     this.updateOnScreenKeyboardVisibility();
-
-    // Show translation preferences if we may:
-    const translationsPrefName = "browser.translation.ui.show";
-    if (Services.prefs.getBoolPref(translationsPrefName)) {
-      let row = document.getElementById("translationBox");
-      row.removeAttribute("hidden");
-      // Showing attribution only for Bing Translator.
-      var { Translation } = ChromeUtils.import(
-        "resource:///modules/translation/TranslationParent.jsm"
-      );
-      if (Translation.translationEngine == "Bing") {
-        document.getElementById("bingAttribution").removeAttribute("hidden");
-      }
-    }
 
     // Firefox Translations settings panel
     // TODO (Bug 1817084) Remove this code when we disable the extension
@@ -749,14 +724,6 @@ var gMainPane = {
     Preferences.addSyncFromPrefListener(
       document.getElementById("defaultFont"),
       element => FontBuilder.readFontSelection(element)
-    );
-    Preferences.addSyncFromPrefListener(
-      document.getElementById("translate"),
-      () =>
-        this.updateButtons(
-          "translateButton",
-          "browser.translation.detectLanguage"
-        )
     );
     Preferences.addSyncFromPrefListener(
       document.getElementById("checkSpelling"),
@@ -1015,18 +982,11 @@ var gMainPane = {
       /**
        * The fully initialized state.
        *
-       * @param {TranslationsActor} translationsActor
        * @param {Object} supportedLanguages
        * @param {Array<{ langTag: string, displayName: string}} languageList
        * @param {Map<string, DownloadPhase>} downloadPhases
        */
-      constructor(
-        translationsActor,
-        supportedLanguages,
-        languageList,
-        downloadPhases
-      ) {
-        this.translationsActor = translationsActor;
+      constructor(supportedLanguages, languageList, downloadPhases) {
         this.supportedLanguages = supportedLanguages;
         this.languageList = languageList;
         this.downloadPhases = downloadPhases;
@@ -1036,14 +996,11 @@ var gMainPane = {
        * Handles all of the async initialization logic.
        */
       static async create() {
-        const translationsActor =
-          window.windowGlobalChild.getActor("Translations");
         const supportedLanguages =
-          await translationsActor.getSupportedLanguages();
+          await TranslationsParent.getSupportedLanguages();
         const languageList =
           TranslationsState.getLanguageList(supportedLanguages);
         const downloadPhases = await TranslationsState.createDownloadPhases(
-          translationsActor,
           languageList
         );
 
@@ -1054,7 +1011,6 @@ var gMainPane = {
         }
 
         return new TranslationsState(
-          translationsActor,
           supportedLanguages,
           languageList,
           downloadPhases
@@ -1096,16 +1052,15 @@ var gMainPane = {
       /**
        * Determine the download phase of each language file.
        *
-       * @param {TranslationsChild} translationsActor
        * @param {Array<{ langTag: string, displayName: string}} languageList.
        * @returns {Map<string, DownloadPhase>} Map the language tag to whether it is downloaded.
        */
-      static async createDownloadPhases(translationsActor, languageList) {
+      static async createDownloadPhases(languageList) {
         const downloadPhases = new Map();
         for (const { langTag } of languageList) {
           downloadPhases.set(
             langTag,
-            (await translationsActor.hasAllFilesForLanguage(langTag))
+            (await TranslationsParent.hasAllFilesForLanguage(langTag))
               ? "downloaded"
               : "uninstalled"
           );
@@ -1162,7 +1117,7 @@ var gMainPane = {
         this.hideError();
         this.disableButtons(true);
         try {
-          await this.state.translationsActor.downloadAllFiles();
+          await TranslationsParent.downloadAllFiles();
           this.markAllDownloadPhases("downloaded");
         } catch (error) {
           TranslationsView.showError(
@@ -1179,7 +1134,7 @@ var gMainPane = {
         this.hideError();
         this.disableButtons(true);
         try {
-          await this.state.translationsActor.deleteAllLanguageFiles();
+          await TranslationsParent.deleteAllLanguageFiles();
           this.markAllDownloadPhases("uninstalled");
         } catch (error) {
           TranslationsView.showError("translations-manage-error-delete", error);
@@ -1199,7 +1154,7 @@ var gMainPane = {
           this.hideError();
           this.updateDownloadPhase(langTag, "loading");
           try {
-            await this.state.translationsActor.downloadLanguageFiles(langTag);
+            await TranslationsParent.downloadLanguageFiles(langTag);
             this.updateDownloadPhase(langTag, "downloaded");
           } catch (error) {
             TranslationsView.showError(
@@ -1220,7 +1175,7 @@ var gMainPane = {
           this.hideError();
           this.updateDownloadPhase(langTag, "loading");
           try {
-            await this.state.translationsActor.deleteLanguageFiles(langTag);
+            await TranslationsParent.deleteLanguageFiles(langTag);
             this.updateDownloadPhase(langTag, "uninstalled");
           } catch (error) {
             TranslationsView.showError(
@@ -1257,11 +1212,11 @@ var gMainPane = {
 
           document.l10n.setAttributes(
             downloadButton,
-            "translations-manage-download-button"
+            "translations-manage-language-download-button"
           );
           document.l10n.setAttributes(
             deleteButton,
-            "translations-manage-delete-button"
+            "translations-manage-language-delete-button"
           );
 
           downloadButton.hidden = true;
@@ -1296,10 +1251,7 @@ var gMainPane = {
        */
       async reloadDownloadPhases() {
         this.state.downloadPhases =
-          await TranslationsState.createDownloadPhases(
-            this.state.translationsActor,
-            this.state.languageList
-          );
+          await TranslationsState.createDownloadPhases(this.state.languageList);
         this.updateAllButtons();
       }
 
@@ -1930,13 +1882,6 @@ var gMainPane = {
     gSubDialog.open(
       "chrome://browser/content/preferences/dialogs/translations.xhtml"
     );
-  },
-
-  openTranslationProviderAttribution() {
-    var { Translation } = ChromeUtils.import(
-      "resource:///modules/translation/TranslationParent.jsm"
-    );
-    Translation.openProviderAttribution();
   },
 
   /**

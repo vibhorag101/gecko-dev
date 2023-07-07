@@ -2,11 +2,9 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
-);
+ChromeUtils.defineESModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+});
 
 AddonTestUtils.init(this);
 AddonTestUtils.createAppInfo(
@@ -460,3 +458,31 @@ add_task(async function test_bss_gecko_android() {
     equal(addon, null, "add-on is not installed");
   }
 });
+
+add_task(
+  { skip_if: AppConstants.platform !== "android" },
+  async function test_bss_gecko_android_only() {
+    const extension = ExtensionTestUtils.loadExtension({
+      manifest: {
+        manifest_version: 2,
+        version: "1.0",
+        browser_specific_settings: {
+          gecko_android: {
+            strict_min_version: "0",
+          },
+        },
+      },
+    });
+
+    await extension.startup();
+
+    const { manifest } = extension.extension;
+    equal(
+      manifest.browser_specific_settings.gecko_android.strict_min_version,
+      "0",
+      "expected strict min version"
+    );
+
+    await extension.unload();
+  }
+);

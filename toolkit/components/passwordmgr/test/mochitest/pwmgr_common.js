@@ -100,6 +100,17 @@ function checkAutoCompleteResults(actualValues, expectedValues, hostname, msg) {
   _checkArrayValues(actualValues.slice(0, -1), expectedValues, msg);
 }
 
+/**
+ * Wait for autocomplete popup to get closed
+ * @return {Promise} resolving when the AC popup is closed
+ */
+async function untilAutocompletePopupClosed() {
+  return SimpleTest.promiseWaitForCondition(async () => {
+    const popupState = await getPopupState();
+    return !popupState.open;
+  }, "Wait for autocomplete popup to be closed");
+}
+
 function getIframeBrowsingContext(window, iframeNumber = 0) {
   let bc = SpecialPowers.wrap(window).windowGlobalChild.browsingContext;
   return SpecialPowers.unwrap(bc.children[iframeNumber]);
@@ -211,17 +222,20 @@ function createLoginForm({
   username = {},
   password = {},
 } = {}) {
-  username.id ||= null;
   username.name ||= "uname";
   username.type ||= "text";
+  username.id ||= null;
   username.value ||= null;
   username.autocomplete ||= null;
-  password.id ||= null;
+
   password.name ||= "pword";
   password.type ||= "password";
+  password.id ||= null;
   password.value ||= null;
   password.label ||= null;
   password.autocomplete ||= null;
+  password.readonly ||= null;
+  password.disabled ||= null;
 
   info(
     `Creating login form ${JSON.stringify({ num, action, username, password })}`
@@ -237,32 +251,44 @@ function createLoginForm({
   }
 
   const usernameInput = document.createElement("input");
+
+  usernameInput.type = username.type;
+  usernameInput.name = username.name;
+
   if (username.id != null) {
     usernameInput.id = username.id;
   }
-  usernameInput.type = username.type;
-  usernameInput.name = username.name;
   if (username.value != null) {
     usernameInput.value = username.value;
   }
   if (username.autocomplete != null) {
     usernameInput.setAttribute("autocomplete", username.autocomplete);
   }
+
   form.appendChild(usernameInput);
 
   if (password) {
     const passwordInput = document.createElement("input");
+
+    passwordInput.type = password.type;
+    passwordInput.name = password.name;
+
     if (password.id != null) {
       passwordInput.id = password.id;
     }
-    passwordInput.type = password.type;
-    passwordInput.name = password.name;
     if (password.value != null) {
       passwordInput.value = password.value;
     }
     if (password.autocomplete != null) {
       passwordInput.setAttribute("autocomplete", password.autocomplete);
     }
+    if (password.readonly != null) {
+      passwordInput.setAttribute("readonly", password.readonly);
+    }
+    if (password.disabled != null) {
+      passwordInput.setAttribute("disabled", password.disabled);
+    }
+
     if (password.label != null) {
       const passwordLabel = document.createElement("label");
       passwordLabel.innerText = password.label;
@@ -312,6 +338,67 @@ function checkLoginForm(
     expectedPassword,
     "Checking " + formID + " password is: " + expectedPassword
   );
+}
+
+/**
+ * Check repeatedly for a while to see if a particular condition still applies.
+ * This function checks the return value of `condition` repeatedly until either
+ * the condition has a falsy return value, or `retryTimes` is exceeded.
+ */
+
+function ensureCondition(
+  condition,
+  errorMsg = "Condition did not last.",
+  retryTimes = 10
+) {
+  return new Promise((resolve, reject) => {
+    let tries = 0;
+    let conditionFailed = false;
+    let interval = setInterval(async function () {
+      try {
+        const conditionPassed = await condition();
+        conditionFailed ||= !conditionPassed;
+      } catch (e) {
+        ok(false, e + "\n" + e.stack);
+        conditionFailed = true;
+      }
+      if (conditionFailed || tries >= retryTimes) {
+        ok(!conditionFailed, errorMsg);
+        clearInterval(interval);
+        if (conditionFailed) {
+          reject(errorMsg);
+        } else {
+          resolve();
+        }
+      }
+      tries++;
+    }, 100);
+  });
+}
+
+/**
+ * Wait a while to ensure login form stays filled with username and password
+ * @see `checkLoginForm` below for a similar function.
+ * @returns a promise, resolving when done
+ *
+ * TODO: eventually get rid of this time based check, and transition to an
+ * event based approach. See Bug 1811142.
+ * Filling happens by `_fillForm()` which can report it's decision and we can
+ * wait for it. One of the options is to have `didFillFormAsync()` from
+ * https://phabricator.services.mozilla.com/D167214#change-3njWgUgqswws
+ */
+function ensureLoginFormStaysFilledWith(
+  usernameField,
+  expectedUsername,
+  passwordField,
+  expectedPassword
+) {
+  return ensureCondition(() => {
+    return (
+      Object.is(usernameField.value, expectedUsername) &&
+      Object.is(passwordField.value, expectedPassword)
+    );
+  }, `Ensuring form ${usernameField.parentNode.id} stays filled with "${expectedUsername}:${expectedPassword}"`);
 }
 
 function checkLoginFormInFrame(
@@ -655,13 +742,16 @@ function promiseFormsProcessedInSameProcess(expectedCount = 1) {
  * This works across processes.
  */
 async function promiseFormsProcessed(expectedCount = 1) {
+  info(`waiting for ${expectedCount} forms to be processed`);
   var processedCount = 0;
   return new Promise(resolve => {
     PWMGR_COMMON_PARENT.addMessageListener(
       "formProcessed",
       function formProcessed() {
         processedCount++;
+        info(`processed form ${processedCount} of ${expectedCount}`);
         if (processedCount == expectedCount) {
+          info(`processing of ${expectedCount} forms complete`);
           PWMGR_COMMON_PARENT.removeMessageListener(
             "formProcessed",
             formProcessed
@@ -673,7 +763,7 @@ async function promiseFormsProcessed(expectedCount = 1) {
   });
 }
 
-async function loadFormIntoWindow(origin, html, win, task) {
+async function loadFormIntoWindow(origin, html, win, expectedCount = 1, task) {
   let loadedPromise = new Promise(resolve => {
     win.addEventListener(
       "load",
@@ -686,7 +776,7 @@ async function loadFormIntoWindow(origin, html, win, task) {
     );
   });
 
-  let processedPromise = promiseFormsProcessed();
+  let processedPromise = promiseFormsProcessed(expectedCount);
   win.location =
     origin + "/tests/toolkit/components/passwordmgr/test/mochitest/blank.html";
   info(`Waiting for window to load for origin: ${origin}`);

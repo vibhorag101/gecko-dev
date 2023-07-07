@@ -11,7 +11,6 @@
 #ifdef ACCESSIBILITY
 #  include "mozilla/a11y/DocAccessibleParent.h"
 #  include "mozilla/a11y/Platform.h"
-#  include "mozilla/a11y/RemoteAccessibleBase.h"
 #  include "nsAccessibilityService.h"
 #  if defined(XP_WIN)
 #    include "mozilla/a11y/AccessibleWrap.h"
@@ -1931,6 +1930,7 @@ nsresult BrowsingContext::LoadURI(nsDocShellLoadState* aLoadState,
 
   MOZ_DIAGNOSTIC_ASSERT(aLoadState->TargetBrowsingContext().IsNull(),
                         "Targeting occurs in InternalLoad");
+  aLoadState->AssertProcessCouldTriggerLoadIfSystem();
 
   if (mDocShell) {
     return mDocShell->LoadURI(aLoadState, aSetNavigating);
@@ -2027,6 +2027,7 @@ nsresult BrowsingContext::InternalLoad(nsDocShellLoadState* aLoadState) {
                         "should have target bc set");
   MOZ_DIAGNOSTIC_ASSERT(aLoadState->TargetBrowsingContext() == this,
                         "must be targeting this BrowsingContext");
+  aLoadState->AssertProcessCouldTriggerLoadIfSystem();
 
   if (mDocShell) {
     return nsDocShell::Cast(mDocShell)->InternalLoad(aLoadState);

@@ -26,6 +26,7 @@
 #include "builtin/String.h"
 #include "builtin/Symbol.h"
 #include "builtin/WeakSetObject.h"
+#include "gc/AllocKind.h"
 #include "gc/GC.h"
 #include "js/CharacterEncoding.h"
 #include "js/friend/DumpFunctions.h"  // js::DumpObject
@@ -1189,21 +1190,6 @@ bool ProxyObject::fixupAfterSwap(JSContext* cx,
   return true;
 }
 
-#ifdef DEBUG
-static bool IsBackgroundFinalizedWhenTenured(JSObject* obj) {
-  if (obj->isTenured()) {
-    return gc::IsBackgroundFinalized(obj->asTenured().getAllocKind());
-  }
-
-  if (obj->is<ProxyObject>()) {
-    return gc::IsBackgroundFinalized(
-        obj->as<ProxyObject>().allocKindForTenure());
-  }
-
-  return js::gc::CanUseBackgroundAllocKind(obj->getClass());
-}
-#endif
-
 static gc::AllocKind SwappableObjectAllocKind(JSObject* obj) {
   MOZ_ASSERT(ObjectMayBeSwapped(obj));
 
@@ -1222,8 +1208,7 @@ static gc::AllocKind SwappableObjectAllocKind(JSObject* obj) {
 void JSObject::swap(JSContext* cx, HandleObject a, HandleObject b,
                     AutoEnterOOMUnsafeRegion& oomUnsafe) {
   // Ensure swap doesn't cause a finalizer to be run at the wrong time.
-  MOZ_ASSERT(IsBackgroundFinalizedWhenTenured(a) ==
-             IsBackgroundFinalizedWhenTenured(b));
+  MOZ_ASSERT(a->isBackgroundFinalized() == b->isBackgroundFinalized());
 
   MOZ_ASSERT(a->compartment() == b->compartment());
 
@@ -1954,13 +1939,10 @@ bool js::SetPrototype(JSContext* cx, HandleObject obj, HandleObject proto,
   }
 
   /*
-   * Disallow mutating the [[Prototype]] on Typed Objects, per the spec.
+   * Disallow mutating the [[Prototype]] on WebAssembly GC objects.
    */
   if (obj->is<WasmGcObject>()) {
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_CANT_SET_PROTO_OF,
-                              "incompatible WebAssembly object");
-    return false;
+    return result.fail(JSMSG_CANT_SET_PROTO);
   }
 
   /* ES6 9.1.2 step 5 forbids changing [[Prototype]] if not [[Extensible]]. */
@@ -2011,6 +1993,10 @@ bool js::PreventExtensions(JSContext* cx, HandleObject obj,
                            ObjectOpResult& result) {
   if (obj->is<ProxyObject>()) {
     return js::Proxy::preventExtensions(cx, obj, result);
+  }
+
+  if (obj->is<WasmGcObject>()) {
+    return result.failCantPreventExtensions();
   }
 
   if (!obj->nonProxyIsExtensible()) {
@@ -3272,6 +3258,15 @@ JS_PUBLIC_API void js::DumpBacktrace(JSContext* cx) {
 }
 
 /* * */
+
+bool JSObject::isBackgroundFinalized() const {
+  if (isTenured()) {
+    return js::gc::IsBackgroundFinalized(asTenured().getAllocKind());
+  }
+
+  js::Nursery& nursery = runtimeFromMainThread()->gc.nursery();
+  return js::gc::IsBackgroundFinalized(allocKindForTenure(nursery));
+}
 
 js::gc::AllocKind JSObject::allocKindForTenure(
     const js::Nursery& nursery) const {

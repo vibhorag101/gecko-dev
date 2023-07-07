@@ -2401,7 +2401,7 @@ struct FramesWithDepth {
       // first
       return mDepth > aOther.mDepth;
     }
-    return this < &aOther;
+    return false;
   }
   bool operator==(const FramesWithDepth& aOther) const {
     return this == &aOther;
@@ -2418,7 +2418,7 @@ static void FlushFramesArray(nsTArray<FramesWithDepth>& aSource,
   if (aSource.IsEmpty()) {
     return;
   }
-  aSource.Sort();
+  aSource.StableSort();
   uint32_t length = aSource.Length();
   for (uint32_t i = 0; i < length; i++) {
     aDest->AppendElements(std::move(aSource[i].mFrames));
@@ -2474,7 +2474,7 @@ void nsDisplayList::HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
         continue;
       }
       AutoTArray<nsIFrame*, 1> neverUsed;
-      // Start gethering leaves of the 3D rendering context, and
+      // Start gathering leaves of the 3D rendering context, and
       // append leaves at the end of mItemBuffer.  Leaves are
       // processed at following iterations.
       aState->mInPreserves3D = true;
@@ -6264,7 +6264,7 @@ Matrix4x4 nsDisplayTransform::GetResultingTransformMatrixInternal(
   if (aProperties.HasTransform()) {
     result = nsStyleTransformMatrix::ReadTransforms(
         aProperties.mTranslate, aProperties.mRotate, aProperties.mScale,
-        aProperties.mMotion, aProperties.mTransform, aRefBox,
+        aProperties.mMotion.ptrOr(nullptr), aProperties.mTransform, aRefBox,
         aAppUnitsPerPixel);
   } else if (hasSVGTransforms) {
     // Correct the translation components for zoom:

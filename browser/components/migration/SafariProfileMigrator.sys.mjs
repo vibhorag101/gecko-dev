@@ -86,11 +86,10 @@ Bookmarks.prototype = {
     // Thus, we must create a map from bookmark URLs -> their favicon entry's UUID.
     let bookmarkURLToUUIDMap = new Map();
 
-    const faviconFolder = FileUtils.getDir(
-      "ULibDir",
-      ["Safari", "Favicon Cache"],
-      false
-    ).path;
+    const faviconFolder = FileUtils.getDir("ULibDir", [
+      "Safari",
+      "Favicon Cache",
+    ]).path;
     let dbPath = PathUtils.join(faviconFolder, "favicons.db");
 
     try {
@@ -272,45 +271,12 @@ Bookmarks.prototype = {
     let favicons = [];
     let convertedEntries = [];
 
-    const faviconFolder = FileUtils.getDir(
-      "ULibDir",
-      ["Safari", "Favicon Cache"],
-      false
-    ).path;
+    const faviconFolder = FileUtils.getDir("ULibDir", [
+      "Safari",
+      "Favicon Cache",
+    ]).path;
 
     for (const entry of entries) {
-      try {
-        // Try to get the favicon data for each bookmark we have.
-        // We use uri.spec as our unique identifier since bookmark links
-        // don't completely match up in the Safari data.
-        let uri = Services.io.newURI(entry.get("URLString"));
-        let uriSpec = uri.spec;
-
-        // Safari's favicon database doesn't include forward slashes for
-        // the page URLs, despite adding them in the Bookmarks.plist file.
-        // We'll strip any off here for our favicon lookup.
-        if (uriSpec.endsWith("/")) {
-          uriSpec = uriSpec.replace(/\/+$/, "");
-        }
-
-        let uuid = bookmarkURLToUUIDMap.get(uriSpec);
-        if (uuid) {
-          // Hash the UUID with md5 to give us the favicon file name
-          let hashedUUID = lazy.PlacesUtils.md5(uuid, {
-            format: "hex",
-          }).toUpperCase();
-          let faviconFile = PathUtils.join(
-            faviconFolder,
-            "favicons",
-            hashedUUID
-          );
-          let faviconData = await IOUtils.read(faviconFile);
-          favicons.push({ faviconData, uri });
-        }
-      } catch (error) {
-        console.error(error);
-      }
-
       let type = entry.get("WebBookmarkType");
       if (type == "WebBookmarkTypeList" && entry.has("Children")) {
         let convertedChildren = await this._convertEntries(
@@ -330,7 +296,8 @@ Bookmarks.prototype = {
           new URL(url);
         } catch (ex) {
           console.error(
-            `Ignoring ${url} when importing from Safari because of exception: ${ex}`
+            `Ignoring ${url} when importing from Safari because of exception:`,
+            ex
           );
           continue;
         }
@@ -339,6 +306,40 @@ Bookmarks.prototype = {
           title = entry.get("URIDictionary").get("title");
         }
         convertedEntries.push({ url, title });
+
+        try {
+          // Try to get the favicon data for each bookmark we have.
+          // We use uri.spec as our unique identifier since bookmark links
+          // don't completely match up in the Safari data.
+          let uri = Services.io.newURI(url);
+          let uriSpec = uri.spec;
+
+          // Safari's favicon database doesn't include forward slashes for
+          // the page URLs, despite adding them in the Bookmarks.plist file.
+          // We'll strip any off here for our favicon lookup.
+          if (uriSpec.endsWith("/")) {
+            uriSpec = uriSpec.replace(/\/+$/, "");
+          }
+
+          let uuid = bookmarkURLToUUIDMap.get(uriSpec);
+          if (uuid) {
+            // Hash the UUID with md5 to give us the favicon file name.
+            let hashedUUID = lazy.PlacesUtils.md5(uuid, {
+              format: "hex",
+            }).toUpperCase();
+            let faviconFile = PathUtils.join(
+              faviconFolder,
+              "favicons",
+              hashedUUID
+            );
+            let faviconData = await IOUtils.read(faviconFile);
+            favicons.push({ faviconData, uri });
+          }
+        } catch (error) {
+          // Even if we fail, still continue the import process
+          // since favicons aren't as essential as the bookmarks themselves.
+          console.error(error);
+        }
       }
     }
 
@@ -347,21 +348,46 @@ Bookmarks.prototype = {
 };
 
 async function GetHistoryResource() {
-  let dbPath = FileUtils.getDir(
-    "ULibDir",
-    ["Safari", "History.db"],
-    false
-  ).path;
+  let dbPath = FileUtils.getDir("ULibDir", ["Safari", "History.db"]).path;
   let maxAge = msToNSDate(
     Date.now() - MigrationUtils.HISTORY_MAX_AGE_IN_MILLISECONDS
   );
 
-  let countQuery = `
-    SELECT COUNT(*)
-    FROM history_items LEFT JOIN history_visits
-    ON history_items.id = history_visits.history_item
-    WHERE history_visits.visit_time > ${maxAge}
-    LIMIT 1;`;
+  // If we have read access to the Safari profile directory, check to
+  // see if there's any history to import. If we can't access the profile
+  // directory, let's assume that there's history to import and give the
+  // user the option to migrate it.
+  let canReadHistory = false;
+  try {
+    // 'stat' is always allowed, but reading is somehow not, if the user hasn't
+    // allowed it:
+    await IOUtils.read(dbPath, { maxBytes: 1 });
+    canReadHistory = true;
+  } catch (ex) {
+    console.error(
+      "Cannot yet read from Safari profile directory. Will presume history exists for import."
+    );
+  }
+
+  if (canReadHistory) {
+    let countQuery = `
+      SELECT COUNT(*)
+      FROM history_items LEFT JOIN history_visits
+      ON history_items.id = history_visits.history_item
+      WHERE history_visits.visit_time > ${maxAge}
+      LIMIT 1;`;
+
+    let countResult = await MigrationUtils.getRowsFromDBWithoutLocks(
+      dbPath,
+      "Safari history",
+      countQuery
+    );
+
+    if (!countResult[0].getResultByName("COUNT(*)")) {
+      return null;
+    }
+  }
+
   let selectQuery = `
     SELECT
       history_items.url as history_url,
@@ -370,16 +396,6 @@ async function GetHistoryResource() {
     FROM history_items LEFT JOIN history_visits
     ON history_items.id = history_visits.history_item
     WHERE history_visits.visit_time > ${maxAge};`;
-
-  let countResult = await MigrationUtils.getRowsFromDBWithoutLocks(
-    dbPath,
-    "Safari history",
-    countQuery
-  );
-
-  if (!countResult[0].getResultByName("COUNT(*)")) {
-    return null;
-  }
 
   return {
     type: MigrationUtils.resourceTypes.HISTORY,
@@ -519,7 +535,7 @@ export class SafariProfileMigrator extends MigratorBase {
   }
 
   async getResources() {
-    let profileDir = FileUtils.getDir("ULibDir", ["Safari"], false);
+    let profileDir = FileUtils.getDir("ULibDir", ["Safari"]);
     if (!profileDir.exists()) {
       return null;
     }
@@ -555,7 +571,7 @@ export class SafariProfileMigrator extends MigratorBase {
   }
 
   async getLastUsedDate() {
-    const profileDir = FileUtils.getDir("ULibDir", ["Safari"], false);
+    const profileDir = FileUtils.getDir("ULibDir", ["Safari"]);
     const dates = await Promise.all(
       ["Bookmarks.plist", "History.db"].map(file => {
         const path = PathUtils.join(profileDir.path, file);
@@ -573,16 +589,15 @@ export class SafariProfileMigrator extends MigratorBase {
       return true;
     }
     // Check if we have access to both bookmarks and favicons:
-    let bookmarkTarget = FileUtils.getDir(
-      "ULibDir",
-      ["Safari", "Bookmarks.plist"],
-      false
-    );
-    let faviconTarget = FileUtils.getDir(
-      "ULibDir",
-      ["Safari", "Favicon Cache", "favicons.db"],
-      false
-    );
+    let bookmarkTarget = FileUtils.getDir("ULibDir", [
+      "Safari",
+      "Bookmarks.plist",
+    ]);
+    let faviconTarget = FileUtils.getDir("ULibDir", [
+      "Safari",
+      "Favicon Cache",
+      "favicons.db",
+    ]);
     try {
       // 'stat' is always allowed, but reading is somehow not, if the user hasn't
       // allowed it:
@@ -603,7 +618,7 @@ export class SafariProfileMigrator extends MigratorBase {
       // The title (second arg) is not displayed on macOS, so leave it blank.
       fp.init(win, "", Ci.nsIFilePicker.modeGetFolder);
       fp.filterIndex = 1;
-      fp.displayDirectory = FileUtils.getDir("ULibDir", [""], false);
+      fp.displayDirectory = FileUtils.getDir("ULibDir", [""]);
       // Now wait for the filepicker to open and close. If the user picks
       // the Safari folder, macOS will grant us read access to everything
       // inside, so we don't need to check or do anything else with what's
@@ -619,7 +634,7 @@ export class SafariProfileMigrator extends MigratorBase {
 
   get mainPreferencesPropertyList() {
     if (this._mainPreferencesPropertyList === undefined) {
-      let file = FileUtils.getDir("UsrPrfs", [], false);
+      let file = FileUtils.getDir("UsrPrfs", []);
       if (file.exists()) {
         file.append("com.apple.Safari.plist");
         if (file.exists()) {

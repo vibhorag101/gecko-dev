@@ -34,6 +34,7 @@
 #include "mozilla/UniquePtr.h"       // for UniquePtr
 #include "nsCOMPtr.h"                // for already_AddRefed
 #include "nsTArray.h"
+#include "OvershootDetector.h"
 
 namespace mozilla {
 class MultiTouchInput;
@@ -110,7 +111,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
   typedef mozilla::layers::AsyncDragMetrics AsyncDragMetrics;
   using HitTestResult = IAPZHitTester::HitTestResult;
 
-  /**
+  /*
    * A result from APZCTreeManager::FindHandoffParent.
    */
   struct TargetApzcForNodeResult {
@@ -127,11 +128,10 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
   struct TreeBuildingState;
 
  public:
-  explicit APZCTreeManager(LayersId aRootLayersId,
-                           UniquePtr<IAPZHitTester> aHitTester = nullptr);
-
   static mozilla::LazyLogModule sLog;
 
+  static already_AddRefed<APZCTreeManager> Create(
+      LayersId aRootLayersId, UniquePtr<IAPZHitTester> aHitTester = nullptr);
   void SetSampler(APZSampler* aSampler);
   void SetUpdater(APZUpdater* aUpdater);
 
@@ -510,6 +510,10 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
   already_AddRefed<wr::WebRenderAPI> GetWebRenderAPI() const;
 
  protected:
+  APZCTreeManager(LayersId aRootLayersId, UniquePtr<IAPZHitTester> aHitTester);
+
+  void Init();
+
   // Protected destructor, to discourage deletion outside of Release():
   virtual ~APZCTreeManager();
 
@@ -1038,6 +1042,10 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
   std::unordered_map<LayersId, UniquePtr<APZTestData>, LayersId::HashFn>
       mTestData;
   mutable mozilla::Mutex mTestDataLock;
+
+  // A state machine that tries to record how much users are overshooting
+  // their desired scroll destination while using the scrollwheel.
+  OvershootDetector mOvershootDetector;
 
   // This must only be touched on the controller thread.
   float mDPI;

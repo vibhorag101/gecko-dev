@@ -396,7 +396,8 @@ nsresult HttpBaseChannel::Init(nsIURI* aURI, uint32_t aCaps,
 
   rv = gHttpHandler->AddStandardRequestHeaders(
       &mRequestHead, isHTTPS, aContentPolicyType,
-      nsContentUtils::ShouldResistFingerprinting(this));
+      nsContentUtils::ShouldResistFingerprinting(this,
+                                                 RFPTarget::HttpUserAgent));
   if (NS_FAILED(rv)) return rv;
 
   nsAutoCString type;
@@ -2428,6 +2429,7 @@ nsresult HttpBaseChannel::ProcessCrossOriginEmbedderPolicyHeader() {
   // https://html.spec.whatwg.org/multipage/origin.html#coep
   if (mLoadInfo->GetExternalContentPolicyType() ==
           ExtContentPolicy::TYPE_SUBDOCUMENT &&
+      !nsHttpChannel::IsRedirectStatus(mResponseHead->Status()) &&
       mLoadInfo->GetLoadingEmbedderPolicy() !=
           nsILoadInfo::EMBEDDER_POLICY_NULL &&
       resultPolicy != nsILoadInfo::EMBEDDER_POLICY_REQUIRE_CORP &&
@@ -4798,8 +4800,7 @@ HttpBaseChannel::ReplacementChannelConfig::ReplacementChannelConfig(
 }
 
 dom::ReplacementChannelConfigInit
-HttpBaseChannel::ReplacementChannelConfig::Serialize(
-    dom::ContentParent* aParent) {
+HttpBaseChannel::ReplacementChannelConfig::Serialize() {
   dom::ReplacementChannelConfigInit config;
   config.redirectFlags() = redirectFlags;
   config.classOfService() = classOfService;
@@ -5961,9 +5962,15 @@ HttpBaseChannel::CancelByURLClassifier(nsresult aErrorCode) {
   return Cancel(aErrorCode);
 }
 
-void HttpBaseChannel::SetIPv4Disabled() { mCaps |= NS_HTTP_DISABLE_IPV4; }
+NS_IMETHODIMP HttpBaseChannel::SetIPv4Disabled() {
+  mCaps |= NS_HTTP_DISABLE_IPV4;
+  return NS_OK;
+}
 
-void HttpBaseChannel::SetIPv6Disabled() { mCaps |= NS_HTTP_DISABLE_IPV6; }
+NS_IMETHODIMP HttpBaseChannel::SetIPv6Disabled() {
+  mCaps |= NS_HTTP_DISABLE_IPV6;
+  return NS_OK;
+}
 
 NS_IMETHODIMP HttpBaseChannel::GetResponseEmbedderPolicy(
     bool aIsOriginTrialCoepCredentiallessEnabled,
@@ -6208,9 +6215,116 @@ HttpBaseChannel::GetIsProxyUsed(bool* aIsProxyUsed) {
   return NS_OK;
 }
 
+static void CollectORBBlockTelemetry(
+    const OpaqueResponseBlockedTelemetryReason aTelemetryReason,
+    ExtContentPolicy aPolicy) {
+  Telemetry::LABELS_ORB_BLOCK_REASON label{
+      static_cast<uint32_t>(aTelemetryReason)};
+  Telemetry::AccumulateCategorical(label);
+
+  switch (aPolicy) {
+    case ExtContentPolicy::TYPE_INVALID:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::INVALID);
+      break;
+    case ExtContentPolicy::TYPE_OTHER:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::OTHER);
+      break;
+    case ExtContentPolicy::TYPE_FETCH:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::BLOCKED_FETCH);
+      break;
+    case ExtContentPolicy::TYPE_SCRIPT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::SCRIPT);
+      break;
+    case ExtContentPolicy::TYPE_IMAGE:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::IMAGE);
+      break;
+    case ExtContentPolicy::TYPE_STYLESHEET:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::STYLESHEET);
+      break;
+    case ExtContentPolicy::TYPE_XMLHTTPREQUEST:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::XMLHTTPREQUEST);
+      break;
+    case ExtContentPolicy::TYPE_DTD:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::DTD);
+      break;
+    case ExtContentPolicy::TYPE_FONT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::FONT);
+      break;
+    case ExtContentPolicy::TYPE_MEDIA:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::MEDIA);
+      break;
+    case ExtContentPolicy::TYPE_CSP_REPORT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::CSP_REPORT);
+      break;
+    case ExtContentPolicy::TYPE_XSLT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::XSLT);
+      break;
+    case ExtContentPolicy::TYPE_IMAGESET:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::IMAGESET);
+      break;
+    case ExtContentPolicy::TYPE_WEB_MANIFEST:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::WEB_MANIFEST);
+      break;
+    case ExtContentPolicy::TYPE_SPECULATIVE:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::SPECULATIVE);
+      break;
+    case ExtContentPolicy::TYPE_UA_FONT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::UA_FONT);
+      break;
+    case ExtContentPolicy::TYPE_PROXIED_WEBRTC_MEDIA:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::PROXIED_WEBRTC_MEDIA);
+      break;
+    case ExtContentPolicy::TYPE_PING:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::PING);
+      break;
+    case ExtContentPolicy::TYPE_BEACON:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::BEACON);
+      break;
+    case ExtContentPolicy::TYPE_WEB_TRANSPORT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::WEB_TRANSPORT);
+      break;
+    default:
+      MOZ_ASSERT_UNREACHABLE("Shouldn't block this type");
+      // DOCUMENT, SUBDOCUMENT, OBJECT, OBJECT_SUBREQUEST,
+      // WEBSOCKET and SAVEAS_DOWNLOAD are excluded from ORB
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::EXCLUDED);
+      break;
+  }
+}
+
 void HttpBaseChannel::LogORBError(
     const nsAString& aReason,
     const OpaqueResponseBlockedTelemetryReason aTelemetryReason) {
+  auto policy = mLoadInfo->GetExternalContentPolicyType();
+  CollectORBBlockTelemetry(aTelemetryReason, policy);
+
+  // Blocking `ExtContentPolicy::TYPE_BEACON` isn't web observable, so keep
+  // quiet in the console about blocking it.
+  if (policy == ExtContentPolicy::TYPE_BEACON) {
+    return;
+  }
+
   RefPtr<dom::Document> doc;
   mLoadInfo->GetLoadingDocument(getter_AddRefs(doc));
 
@@ -6234,33 +6348,6 @@ void HttpBaseChannel::LogORBError(
   nsContentUtils::ReportToConsole(nsIScriptError::warningFlag, "ORB"_ns, doc,
                                   nsContentUtils::eNECKO_PROPERTIES,
                                   "ResourceBlockedORB", params);
-
-  Telemetry::LABELS_ORB_BLOCK_REASON label{
-      static_cast<uint32_t>(aTelemetryReason)};
-  Telemetry::AccumulateCategorical(label);
-
-  switch (mLoadInfo->GetExternalContentPolicyType()) {
-    case ExtContentPolicy::TYPE_FETCH:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::BLOCKED_FETCH);
-      break;
-    case ExtContentPolicy::TYPE_IMAGE:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::IMAGE);
-      break;
-    case ExtContentPolicy::TYPE_SCRIPT:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::SCRIPT);
-      break;
-    case ExtContentPolicy::TYPE_MEDIA:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::MEDIA);
-      break;
-    default:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::OTHER);
-      break;
-  }
 }
 
 NS_IMETHODIMP HttpBaseChannel::SetEarlyHintLinkType(

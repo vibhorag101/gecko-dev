@@ -4,15 +4,13 @@
 
 /* eslint no-shadow: error, mozilla/no-aArgs: error */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
-
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AddonSearchEngine: "resource://gre/modules/AddonSearchEngine.sys.mjs",
   IgnoreLists: "resource://gre/modules/IgnoreLists.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
@@ -26,10 +24,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   SearchStaticData: "resource://gre/modules/SearchStaticData.sys.mjs",
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
   UserSearchEngine: "resource://gre/modules/UserSearchEngine.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  AddonManager: "resource://gre/modules/AddonManager.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(lazy, "logConsole", () => {
@@ -392,15 +386,18 @@ export class SearchService {
     lazy.logConsole.debug("init");
 
     TelemetryStopwatch.start("SEARCH_SERVICE_INIT_MS");
+    const timerId = Glean.searchService.startupTime.start();
     this.#initStarted = true;
     let result;
     try {
       // Complete initialization by calling asynchronous initializer.
       result = await this.#init();
       TelemetryStopwatch.finish("SEARCH_SERVICE_INIT_MS");
+      Glean.searchService.startupTime.stopAndAccumulate(timerId);
     } catch (ex) {
       this.#initializationStatus = "failed";
       TelemetryStopwatch.cancel("SEARCH_SERVICE_INIT_MS");
+      Glean.searchService.startupTime.cancel(timerId);
       this.#initObservers.reject(ex.result);
       throw ex;
     }
@@ -1233,13 +1230,12 @@ export class SearchService {
 
     let engineId = this._settings.getMetaDataAttribute(attributeName);
     let engine = this._engines.get(engineId) || null;
-    // If the selected engine is an application provided one, we can relax the
-    // verification hash check to reduce the annoyance for users who
-    // backup/sync their profile in custom ways.
     if (
       engine &&
-      (engine.isAppProvided ||
-        this._settings.getVerifiedMetaDataAttribute(attributeName))
+      this._settings.getVerifiedMetaDataAttribute(
+        attributeName,
+        engine.isAppProvided
+      )
     ) {
       if (privateMode) {
         this.#currentPrivateEngine = engine;
@@ -2270,9 +2266,7 @@ export class SearchService {
     let searchEngineSelectorProperties = {
       locale: Services.locale.appLocaleAsBCP47,
       region: lazy.Region.home || "default",
-      channel: AppConstants.MOZ_APP_VERSION_DISPLAY.endsWith("esr")
-        ? "esr"
-        : AppConstants.MOZ_UPDATE_CHANNEL,
+      channel: lazy.SearchUtils.MODIFIED_APP_CHANNEL,
       experiment:
         lazy.NimbusFeatures.searchConfiguration.getVariable("experiment") ?? "",
       distroID: lazy.SearchUtils.distroID ?? "",

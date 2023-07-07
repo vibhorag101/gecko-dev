@@ -49,11 +49,12 @@ loader.lazyRequireGetter(
   true
 );
 const lazy = {};
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
-);
+loader.lazyGetter(lazy, "AddonManager", () => {
+  return ChromeUtils.importESModule(
+    "resource://gre/modules/AddonManager.sys.mjs",
+    { loadInDevToolsLoader: false }
+  ).AddonManager;
+});
 
 /**
  * Browser-specific actors.

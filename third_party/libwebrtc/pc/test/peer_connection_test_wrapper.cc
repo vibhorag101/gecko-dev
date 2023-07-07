@@ -318,7 +318,8 @@ rtc::scoped_refptr<webrtc::MediaStreamInterface>
 PeerConnectionTestWrapper::GetUserMedia(
     bool audio,
     const cricket::AudioOptions& audio_options,
-    bool video) {
+    bool video,
+    webrtc::Resolution resolution) {
   std::string stream_id =
       kStreamIdBase + rtc::ToString(num_get_user_media_calls_++);
   rtc::scoped_refptr<webrtc::MediaStreamInterface> stream =
@@ -341,14 +342,15 @@ PeerConnectionTestWrapper::GetUserMedia(
     webrtc::FakePeriodicVideoSource::Config config;
     config.frame_interval_ms = 100;
     config.timestamp_offset_ms = rtc::TimeMillis();
+    config.width = resolution.width;
+    config.height = resolution.height;
 
     auto source = rtc::make_ref_counted<webrtc::FakePeriodicVideoTrackSource>(
         config, /* remote */ false);
 
     std::string videotrack_label = stream_id + kVideoTrackLabelBase;
     rtc::scoped_refptr<webrtc::VideoTrackInterface> video_track(
-        peer_connection_factory_->CreateVideoTrack(videotrack_label,
-                                                   source.get()));
+        peer_connection_factory_->CreateVideoTrack(source, videotrack_label));
 
     stream->AddTrack(video_track);
   }

@@ -16,8 +16,8 @@
 #include "RemoteAccessible.h"
 #include "DocAccessibleParent.h"
 #include "RootAccessible.h"
-#include "mozilla/a11y/TableAccessibleBase.h"
-#include "mozilla/a11y/TableCellAccessibleBase.h"
+#include "mozilla/a11y/TableAccessible.h"
+#include "mozilla/a11y/TableCellAccessible.h"
 #include "nsMai.h"
 #include "nsMaiHyperlink.h"
 #include "nsString.h"
@@ -1234,10 +1234,6 @@ void a11y::ProxyEvent(RemoteAccessible* aTarget, uint32_t aEventType) {
   AtkObject* wrapper = GetWrapperFor(aTarget);
 
   switch (aEventType) {
-    case nsIAccessibleEvent::EVENT_FOCUS:
-      atk_focus_tracker_notify(wrapper);
-      atk_object_notify_state_change(wrapper, ATK_STATE_FOCUSED, true);
-      break;
     case nsIAccessibleEvent::EVENT_DOCUMENT_LOAD_COMPLETE:
       if (aTarget->IsDoc()) {
         g_signal_emit_by_name(wrapper, "load_complete");
@@ -1287,9 +1283,17 @@ void a11y::ProxyStateChangeEvent(RemoteAccessible* aTarget, uint64_t aState,
   atkObj->FireStateChangeEvent(aState, aEnabled);
 }
 
+void a11y::ProxyFocusEvent(RemoteAccessible* aTarget,
+                           const LayoutDeviceIntRect& aCaretRect) {
+  AtkObject* wrapper = GetWrapperFor(aTarget);
+
+  atk_focus_tracker_notify(wrapper);
+  atk_object_notify_state_change(wrapper, ATK_STATE_FOCUSED, true);
+}
+
 void a11y::ProxyCaretMoveEvent(RemoteAccessible* aTarget, int32_t aOffset,
-                               bool aIsSelectionCollapsed,
-                               int32_t aGranularity) {
+                               bool aIsSelectionCollapsed, int32_t aGranularity,
+                               const LayoutDeviceIntRect& aCaretRect) {
   AtkObject* wrapper = GetWrapperFor(aTarget);
   g_signal_emit_by_name(wrapper, "text_caret_moved", aOffset);
 }
@@ -1442,7 +1446,7 @@ void AccessibleWrap::GetKeyBinding(Accessible* aAccessible,
 }
 
 // static
-Accessible* AccessibleWrap::GetColumnHeader(TableAccessibleBase* aAccessible,
+Accessible* AccessibleWrap::GetColumnHeader(TableAccessible* aAccessible,
                                             int32_t aColIdx) {
   if (!aAccessible) {
     return nullptr;
@@ -1460,7 +1464,7 @@ Accessible* AccessibleWrap::GetColumnHeader(TableAccessibleBase* aAccessible,
   }
 
   // otherwise get column header for the data cell at the first row.
-  TableCellAccessibleBase* tableCell = cell->AsTableCellBase();
+  TableCellAccessible* tableCell = cell->AsTableCell();
   if (!tableCell) {
     return nullptr;
   }
@@ -1475,7 +1479,7 @@ Accessible* AccessibleWrap::GetColumnHeader(TableAccessibleBase* aAccessible,
 }
 
 // static
-Accessible* AccessibleWrap::GetRowHeader(TableAccessibleBase* aAccessible,
+Accessible* AccessibleWrap::GetRowHeader(TableAccessible* aAccessible,
                                          int32_t aRowIdx) {
   if (!aAccessible) {
     return nullptr;
@@ -1493,7 +1497,7 @@ Accessible* AccessibleWrap::GetRowHeader(TableAccessibleBase* aAccessible,
   }
 
   // otherwise get row header for the data cell at the first column.
-  TableCellAccessibleBase* tableCell = cell->AsTableCellBase();
+  TableCellAccessible* tableCell = cell->AsTableCell();
   if (!tableCell) {
     return nullptr;
   }

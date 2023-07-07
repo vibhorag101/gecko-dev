@@ -4,7 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/BodyStream.h"
 #include "mozilla/dom/ByteStreamHelpers.h"
 #include "mozilla/dom/ReadableByteStreamController.h"
 #include "js/ArrayBuffer.h"
@@ -27,7 +26,8 @@ JSObject* TransferArrayBuffer(JSContext* aCx, JS::Handle<JSObject*> aObject) {
   size_t bufferLength = JS::GetArrayBufferByteLength(aObject);
 
   // Step 2 (Reordered)
-  void* bufferData = JS::StealArrayBufferContents(aCx, aObject);
+  UniquePtr<void, JS::FreePolicy> bufferData{
+      JS::StealArrayBufferContents(aCx, aObject)};
 
   // Step 4.
   if (!JS::DetachArrayBuffer(aCx, aObject)) {
@@ -35,7 +35,8 @@ JSObject* TransferArrayBuffer(JSContext* aCx, JS::Handle<JSObject*> aObject) {
   }
 
   // Step 5.
-  return JS::NewArrayBufferWithContents(aCx, bufferLength, bufferData);
+  return JS::NewArrayBufferWithContents(aCx, bufferLength,
+                                        std::move(bufferData));
 }
 
 // https://streams.spec.whatwg.org/#can-transfer-array-buffer
